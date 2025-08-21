@@ -20,7 +20,7 @@ nginx:
     http: 8080  # Changed from 80 to avoid privileged port issues
   
   # Color scheme selector - change this to switch themes quickly!
-  colorScheme: "green"  # Options: "blue", "green", "pink", "red"
+  colorScheme: "pink"  # Options: "blue", "green", "pink", "red"
   
   # Environment variables for the kodekloud/webapp-color image
   env:
