@@ -1,0 +1,11 @@
+# Global settings for all ArgoCD Applications
+global:
+  repoURL: https://github.com/hjukic/cni-example
+  targetRevision: HEAD
+
+# Application configurations
+applications:
+  nginx:
+    enabled: true
+    project: infrastructure
+    namespace: nginx

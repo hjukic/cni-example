@@ -1,0 +1,38 @@
+# Custom values for nginx application
+# This overrides the official nginx chart values
+
+# Use official nginx chart
+nginx:
+  # Basic configuration
+  replicaCount: 2
+  
+  # Image settings
+  image:
+    registry: docker.io
+    repository: bitnami/nginx
+    tag: "1.25"
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Disable features we don't need
+  ingress:
+    enabled: false
+  
+  # Security settings
+  containerSecurityContext:
+    enabled: false
+  
+  podSecurityContext:
+    enabled: false

@@ -1,0 +1,33 @@
+# Simple GitOps Demo - Bootstrap File
+# Apply after ArgoCD is installed: kubectl apply -f charts/bootstrap.yaml
+
+---
+# Deploy our applications using the applications chart
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: applications
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/hjukic/cni-example
+    targetRevision: HEAD
+    path: charts/applications
+    helm:
+      values: |
+        global:
+          repoURL: https://github.com/hjukic/cni-example
+          targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  revisionHistoryLimit: 10
