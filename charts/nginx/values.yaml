@@ -6,6 +6,10 @@ nginx:
   # Basic configuration
   replicaCount: 2
   
+  # Deployment strategy
+  deployment:
+    revisionHistoryLimit: 3  # Keep only last 3 ReplicaSets
+  
   # Image settings
   image:
     registry: docker.io
