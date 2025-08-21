@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitOps Demo - Nginx</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px; 
+            text-align: center;
+            background-color: {{- if eq .Values.nginx.colorScheme "blue" -}}#e3f2fd{{- else if eq .Values.nginx.colorScheme "green" -}}#e8f5e8{{- else if eq .Values.nginx.colorScheme "purple" -}}#f3e5f5{{- else -}}#f0f0f0{{- end -}};
+        }
+        h1 { 
+            color: {{- if eq .Values.nginx.colorScheme "blue" -}}#2196f3{{- else if eq .Values.nginx.colorScheme "green" -}}#4caf50{{- else if eq .Values.nginx.colorScheme "purple" -}}#9c27b0{{- else -}}#333{{- end -}};
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .version { 
+            font-size: 24px; 
+            margin: 20px 0;
+            font-weight: bold;
+            color: {{- if eq .Values.nginx.colorScheme "blue" -}}#1565c0{{- else if eq .Values.nginx.colorScheme "green" -}}#2e7d32{{- else if eq .Values.nginx.colorScheme "purple" -}}#6a1b9a{{- else -}}#666{{- end -}};
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 GitOps Demo - Nginx</h1>
+        <div class="version">Theme: {{ .Values.nginx.colorScheme | title }}</div>
+        <p>Change colorScheme in values.yaml to see live updates!</p>
+        <p>Available themes: blue, green, purple</p>
+    </div>
+</body>
+</html>
