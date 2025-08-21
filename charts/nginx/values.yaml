@@ -14,7 +14,7 @@ nginx:
   image:
     registry: docker.io
     repository: bitnami/nginx
-    tag: "1.25"
+    tag: "1.29.1"
   
   # Container configuration - use non-privileged port
   containerPorts:
