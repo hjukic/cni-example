@@ -20,14 +20,15 @@ nginx:
   containerPorts:
     http: 8080  # Changed from 80 to avoid privileged port issues
   
-  # Service configuration - NodePort for external access
+  # Service configuration - NodePort with specific port for reliable access
   service:
     type: NodePort
-    port: 80
-    targetPort: 
-      http: 8080  # Match the container port
-      https: 443
-    nodePort: 30080  # Specific NodePort for easy access
+    ports:
+      http: 80
+    targetPort:
+      http: http
+    nodePorts:
+      http: "30080"  # Specific NodePort for easy access
   
   # Resource limits
   resources:

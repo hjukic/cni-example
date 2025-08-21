@@ -77,9 +77,7 @@ kubectl cluster-info
 kubectl get nodes
 ```
 
-
-
-## 🚀 Quick Start (No Scripts)
+## 🚀 Quick Start
 
 ### Install ArgoCD with Helm
 ```bash
@@ -110,6 +108,12 @@ Open: http://localhost:8080
 - Password (initial, if not set by Helm):
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+```
+
+### Access Nginx Deployment
+
+```bash
+kubectl port-forward -n nginx svc/nginx 8081:80
 ```
 
 ## 🔎 Verify Deployment
