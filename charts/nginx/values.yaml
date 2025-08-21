@@ -12,10 +12,15 @@ nginx:
     repository: bitnami/nginx
     tag: "1.25"
   
+  # Container configuration - fix the port mapping
+  containerPorts:
+    http: 80
+  
   # Service configuration
   service:
     type: ClusterIP
     port: 80
+    targetPort: 80
   
   # Resource limits
   resources:
