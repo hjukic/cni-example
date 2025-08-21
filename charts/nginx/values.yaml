@@ -12,16 +12,16 @@ nginx:
     repository: bitnami/nginx
     tag: "1.25"
   
-  # Container configuration - fix the port mapping
+  # Container configuration - use non-privileged port
   containerPorts:
-    http: 80
+    http: 8080  # Changed from 80 to avoid privileged port issues
   
   # Service configuration - NodePort for external access
   service:
     type: NodePort
     port: 80
     targetPort: 
-      http: 80
+      http: 8080  # Match the container port
       https: 443
     nodePort: 30080  # Specific NodePort for easy access
   
