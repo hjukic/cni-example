@@ -1,7 +1,7 @@
-# Custom values for nginx application
+# Custom values for nginx application with color controls
 # This demonstrates GitOps upgrades and rollbacks with visual changes
 
-# Use official nginx chart
+# Use kodekloud/webapp-color image for simple color switching
 nginx:
   # Basic configuration
   replicaCount: 2
@@ -10,18 +10,23 @@ nginx:
   deployment:
     revisionHistoryLimit: 3  # Keep only last 3 ReplicaSets
   
-  # Image settings
+  # Image settings - use the color-switching webapp
   image:
     registry: docker.io
-    repository: bitnami/nginx
-    tag: "1.29.1"
+    repository: kodekloud/webapp-color
+    tag: "latest"
   
   # Container configuration - use non-privileged port
   containerPorts:
     http: 8080  # Changed from 80 to avoid privileged port issues
   
   # Color scheme selector - change this to switch themes quickly!
-  colorScheme: "blue"  # Options: "blue", "green", "purple"
+  colorScheme: "blue"  # Options: "blue", "green", "pink", "red"
+  
+  # Environment variables for the kodekloud/webapp-color image
+  env:
+    - name: APP_COLOR
+      value: "{{ .Values.nginx.colorScheme }}"
   
   # Service configuration - NodePort with specific port for reliable access
   service:
