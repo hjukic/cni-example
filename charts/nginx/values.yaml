@@ -20,7 +20,9 @@ nginx:
   service:
     type: NodePort
     port: 80
-    targetPort: 80
+    targetPort: 
+      http: 80
+      https: 443
     nodePort: 30080  # Specific NodePort for easy access
   
   # Resource limits
