@@ -16,11 +16,12 @@ nginx:
   containerPorts:
     http: 80
   
-  # Service configuration
+  # Service configuration - NodePort for external access
   service:
-    type: ClusterIP
+    type: NodePort
     port: 80
     targetPort: 80
+    nodePort: 30080  # Specific NodePort for easy access
   
   # Resource limits
   resources:
