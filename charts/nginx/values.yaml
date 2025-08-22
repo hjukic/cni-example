@@ -22,49 +22,7 @@ nginx:
   
   # Color scheme selector - change this to switch themes quickly!
   colorScheme: "green"  # Options: "blue", "green", "pink", "red"
-  
-  # Custom HTML content - nginx will serve this instead of default
-  customHtml: |
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>GitOps Demo - Nginx</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                margin: 40px; 
-                text-align: center;
-                background-color: {{ if eq .Values.nginx.colorScheme "blue" }}#e3f2fd{{ else if eq .Values.nginx.colorScheme "green" }}#e8f5e8{{ else if eq .Values.nginx.colorScheme "pink" }}#fce4ec{{ else if eq .Values.nginx.colorScheme "red" }}#ffebee{{ else }}#f0f0f0{{ end }};
-            }
-            h1 { 
-                color: {{ if eq .Values.nginx.colorScheme "blue" }}#2196f3{{ else if eq .Values.nginx.colorScheme "green" }}#4caf50{{ else if eq .Values.nginx.colorScheme "pink" }}#e91e63{{ else if eq .Values.nginx.colorScheme "red" }}#f44336{{ else }}#333{{ end }};
-            }
-            .container {
-                background-color: white;
-                border-radius: 10px;
-                padding: 40px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                max-width: 600px;
-                margin: 0 auto;
-            }
-            .version { 
-                font-size: 24px; 
-                margin: 20px 0;
-                font-weight: bold;
-                color: {{ if eq .Values.nginx.colorScheme "blue" }}#1565c0{{ else if eq .Values.nginx.colorScheme "green" }}#2e7d32{{ else if eq .Values.nginx.colorScheme "pink" }}#ad1457{{ else if eq .Values.nginx.colorScheme "red" }}#c62828{{ else }}#666{{ end }};
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🚀 GitOps Demo - Nginx</h1>
-            <div class="version">Theme: {{ .Values.nginx.colorScheme | title }}</div>
-            <p>Change colorScheme in values.yaml to see live updates!</p>
-            <p>Available themes: blue, green, pink, red</p>
-        </div>
-    </body>
-    </html>
-  
+
   # Service configuration - NodePort with specific port for reliable access
   service:
     type: NodePort
