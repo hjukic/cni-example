@@ -16,7 +16,7 @@ spec:
     namespace: webapp-color
   syncPolicy:
     automated:
-      selfHeal: true
+#      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
