@@ -69,9 +69,9 @@ kube-prometheus-stack:
       # Storage disabled for demo
       storage: {}
 
-  # Node Exporter - collect host metrics
+  # Node Exporter - disabled for Docker Desktop compatibility
   nodeExporter:
-    enabled: true
+    enabled: false
 
   # Kube State Metrics - collect k8s cluster metrics  
   kubeStateMetrics:
