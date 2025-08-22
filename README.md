@@ -13,14 +13,14 @@ cni-example/
 │   │   │   └── monitoring.yaml   # Monitoring stack definition
 │   │   ├── Chart.yaml            # Applications chart
 │   │   └── values.yaml           # Global application settings
-│   ├── webapp-color/             # Webapp-color application chart
+│   ├── webapp-color/             # Webapp-color custom chart
 │   │   ├── Chart.yaml            # Custom chart definition
 │   │   ├── templates/            # Kubernetes manifests
 │   │   │   ├── deployment.yaml   # Deployment template
 │   │   │   ├── service.yaml      # Service template
 │   │   │   └── servicemonitor.yaml # Prometheus monitoring
 │   │   └── values.yaml           # Custom values for webapp-color
-│   ├── monitoring/               # Complete monitoring stack
+│   ├── monitoring/               # Monitoring stack using official chart
 │   │   ├── Chart.yaml            # Points to kube-prometheus-stack
 │   │   └── values.yaml           # Monitoring configuration
 │   └── bootstrap.yaml            # Start everything with ONE file
@@ -171,7 +171,8 @@ kubectl delete namespace argocd
 
 - **GitOps**: Kubernetes state defined in Git and applied by ArgoCD
 - **App of Apps**: A single ArgoCD Application manages all other applications
-- **Custom Helm Charts**: Simple custom chart without external dependencies
+- **Consistent Structure**: Both apps follow the same chart organization pattern
+- **Mixed Chart Types**: Custom charts (webapp-color) + Official charts (monitoring)  
 - **Visual Configuration Changes**: Change webapp colors by modifying values.yaml
 - **Rollback Capabilities**: Demonstrate ArgoCD rollback vs Git revert workflows
 - **Complete Monitoring**: Prometheus, Grafana, and AlertManager via GitOps
@@ -299,7 +300,9 @@ spec:
 
 1. **Bootstrap** deploys the `applications` chart once
 2. **Applications chart** creates ArgoCD Applications for each app
-3. **Each app folder** contains a custom Helm chart with Kubernetes templates
+3. **Consistent structure** with two chart types:
+   - **Custom charts** (webapp-color): Local Kubernetes templates
+   - **Official charts** (monitoring): Dependencies on external Helm charts with custom values
 4. **ArgoCD automatically** deploys everything from Git commits
 5. **Visual feedback** through webapp color changes makes GitOps concepts tangible
 6. **No manual deployment** needed after bootstrap - pure GitOps!
