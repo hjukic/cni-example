@@ -208,29 +208,6 @@ git push
 - See HTTP request patterns change
 - Monitor resource usage during sync
 
-## 🔄 Rollback Demo
-
-### Setup for Rollback Demo
-To demonstrate rollbacks without auto-sync interference, the project is configured with `selfHeal` disabled.
-
-### Demo Workflow
-1. **Deploy initial color** (e.g., green)
-2. **Change to different color** via Git (e.g., blue)
-3. **Use ArgoCD UI to rollback** to previous version
-4. **Show the difference**: Manual rollback vs Git-driven changes
-
-### Enable/Disable Auto-Sync
-Edit `charts/applications/templates/webapp-color.yaml`:
-```yaml
-# Comment out for rollback demos
-# automated:
-#   selfHeal: true
-
-# Uncomment for full GitOps
-automated:
-  selfHeal: true
-```
-
 ## 📊 Monitoring Demo
 
 ### Explore Grafana Dashboards
