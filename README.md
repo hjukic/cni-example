@@ -1,6 +1,6 @@
 # 🐳 GitOps Kubernetes Project with ArgoCD and Helm
 
-This project is a very simple, presentation-friendly GitOps demo that uses ArgoCD and Helm to deploy an example app (nginx) to a local Kubernetes cluster (Docker Desktop Kubernetes).
+This project is a very simple, presentation-friendly GitOps demo that uses ArgoCD and Helm to deploy a color-changing webapp to a local Kubernetes cluster (Docker Desktop Kubernetes). Perfect for demonstrating GitOps workflows, rollbacks, and visual configuration changes!
 
 ## 📁 Project Structure
 
@@ -9,14 +9,16 @@ cni-example/
 ├── charts/
 │   ├── applications/              # ArgoCD Application definitions
 │   │   ├── templates/            # Application CRD templates
-│   │   │   └── nginx.yaml        # Nginx application definition
+│   │   │   └── webapp-color.yaml # Webapp-color application definition
 │   │   ├── Chart.yaml            # Applications chart
 │   │   └── values.yaml           # Global application settings
-│   ├── nginx/                    # Nginx application chart
-│   │   ├── Chart.yaml            # Points to official nginx chart
-│   │   └── values.yaml           # Custom values for nginx
+│   ├── webapp-color/             # Webapp-color application chart
+│   │   ├── Chart.yaml            # Custom chart definition
+│   │   ├── templates/            # Kubernetes manifests
+│   │   │   ├── deployment.yaml   # Deployment template
+│   │   │   └── service.yaml      # Service template
+│   │   └── values.yaml           # Custom values for webapp-color
 │   └── bootstrap.yaml            # Start everything with ONE file
-├── scripts/                       # Utility scripts
 └── README.md                      # This file
 ```
 
@@ -110,10 +112,20 @@ Open: http://localhost:8080
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 ```
 
-### Access Nginx Deployment
+### Access Webapp-Color Application
 
+The webapp is accessible via NodePort on port 30080:
+
+**Option 1: Direct NodePort access**
 ```bash
-kubectl port-forward -n nginx svc/nginx 8081:80
+# Access via cluster IP (if using Docker Desktop)
+http://localhost:30080
+```
+
+**Option 2: Port-forward (alternative)**
+```bash
+kubectl port-forward -n webapp-color svc/webapp-color 8081:80
+# Then open: http://localhost:8081
 ```
 
 ## 🔎 Verify Deployment
@@ -121,8 +133,11 @@ kubectl port-forward -n nginx svc/nginx 8081:80
 # See the ArgoCD Applications
 kubectl get applications -n argocd
 
-# See the nginx pods in the nginx namespace (created by ArgoCD)
-kubectl get pods -n nginx
+# See the webapp-color pods in the webapp-color namespace (created by ArgoCD)
+kubectl get pods -n webapp-color
+
+# Check the service
+kubectl get svc -n webapp-color
 ```
 
 ## 🧹 Clean Up (manual)
@@ -138,58 +153,100 @@ kubectl delete namespace argocd
 
 - **GitOps**: Kubernetes state defined in Git and applied by ArgoCD
 - **App of Apps**: A single ArgoCD Application manages all other applications
-- **Official Charts**: Uses official Helm charts with custom values
+- **Custom Helm Charts**: Simple custom chart without external dependencies
+- **Visual Configuration Changes**: Change webapp colors by modifying values.yaml
+- **Rollback Capabilities**: Demonstrate ArgoCD rollback vs Git revert workflows
 - **Clean Separation**: Application definitions separate from chart customizations
+
+## 🎨 GitOps Demo: Color Changes
+
+This project is perfect for demonstrating GitOps workflows with visual feedback:
+
+### 1. **Change Application Color**
+Edit `charts/webapp-color/values.yaml`:
+```yaml
+# Change this line to any supported color
+appColor: "red"  # Options: red, green, blue, darkblue, pink
+```
+
+### 2. **Commit and Push**
+```bash
+git add charts/webapp-color/values.yaml
+git commit -m "Change webapp color to red"
+git push
+```
+
+### 3. **Watch ArgoCD Sync**
+- Open ArgoCD UI: http://localhost:8080
+- Watch the webapp-color application sync automatically
+- Visit the webapp: http://localhost:30080
+- See the color change immediately!
+
+## 🔄 Rollback Demo
+
+### Setup for Rollback Demo
+To demonstrate rollbacks without auto-sync interference, the project is configured with `selfHeal` disabled.
+
+### Demo Workflow
+1. **Deploy initial color** (e.g., green)
+2. **Change to different color** via Git (e.g., blue)
+3. **Use ArgoCD UI to rollback** to previous version
+4. **Show the difference**: Manual rollback vs Git-driven changes
+
+### Enable/Disable Auto-Sync
+Edit `charts/applications/templates/webapp-color.yaml`:
+```yaml
+# Comment out for rollback demos
+# automated:
+#   selfHeal: true
+
+# Uncomment for full GitOps
+automated:
+  selfHeal: true
+```
 
 ## ➕ Adding New Applications
 
-To add a new application (e.g., traefik):
+To add a new application (e.g., another webapp):
 
-1. **Create Application Definition** in `charts/applications/templates/traefik.yaml`:
+1. **Create Application Definition** in `charts/applications/templates/my-app.yaml`:
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   namespace: argocd
-  name: traefik
+  name: my-app
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: infrastructure
+  project: default
   source:
     repoURL: {{ .Values.global.repoURL }}
-    path: charts/traefik
+    path: charts/my-app
     targetRevision: {{ .Values.global.targetRevision }}
   destination:
     server: https://kubernetes.default.svc
-    namespace: traefik
+    namespace: my-app
   syncPolicy:
     automated:
-      selfHeal: true
+     selfHeal: true  # Comment out for demo flexibility
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
 ```
 
-2. **Create Chart Folder** `charts/traefik/` with:
-   - `Chart.yaml` pointing to official traefik chart
-   - `values.yaml` with your customizations
+2. **Create Chart Folder** `charts/my-app/` with:
+   - `Chart.yaml` - Chart metadata
+   - `values.yaml` - Configuration values
+   - `templates/` - Kubernetes manifests (deployment.yaml, service.yaml)
 
-3. **Add to Applications Values** in `charts/applications/values.yaml`:
-```yaml
-applications:
-  traefik:
-    enabled: true
-    project: infrastructure
-    namespace: traefik
-```
-
-4. **Commit and push** - ArgoCD will automatically deploy the new application!
+3. **Commit and push** - ArgoCD will automatically deploy the new application!
 
 ## 🎯 How It Works
 
 1. **Bootstrap** deploys the `applications` chart once
 2. **Applications chart** creates ArgoCD Applications for each app
-3. **Each app folder** points to official Helm charts with custom values
+3. **Each app folder** contains a custom Helm chart with Kubernetes templates
 4. **ArgoCD automatically** deploys everything from Git commits
-5. **No manual deployment** needed after bootstrap
+5. **Visual feedback** through webapp color changes makes GitOps concepts tangible
+6. **No manual deployment** needed after bootstrap - pure GitOps!

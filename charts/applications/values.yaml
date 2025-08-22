@@ -5,7 +5,7 @@ global:
 
 # Application configurations
 applications:
-  nginx:
+  webapp-color:
     enabled: true
-    project: infrastructure
-    namespace: nginx
+    project: default
+    namespace: webapp-color
