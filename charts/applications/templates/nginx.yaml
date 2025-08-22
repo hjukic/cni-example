@@ -2,18 +2,18 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   namespace: argocd
-  name: nginx
+  name: webapp-color
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
     repoURL: {{ .Values.global.repoURL }}
-    path: charts/nginx
+    path: charts/webapp-color
     targetRevision: {{ .Values.global.targetRevision }}
   destination:
     server: https://kubernetes.default.svc
-    namespace: nginx
+    namespace: webapp-color
   syncPolicy:
     automated:
       selfHeal: true

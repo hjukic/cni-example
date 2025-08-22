@@ -1,54 +1,37 @@
-# Custom values for nginx application with color controls
-# This demonstrates GitOps upgrades and rollbacks with visual changes
+# Custom values for webapp-color application
+# This demonstrates GitOps upgrades and rollbacks with visual color changes
 
-# Use official nginx chart with custom HTML
-nginx:
-  # Basic configuration
-  replicaCount: 2
-  
-  # Deployment strategy
-  deployment:
-    revisionHistoryLimit: 3  # Keep only last 3 ReplicaSets
-  
-  # Image settings - use official nginx
-  image:
-    registry: docker.io
-    repository: bitnami/nginx
-    tag: "1.29.1"
-  
-  # Container configuration - use non-privileged port
-  containerPorts:
-    http: 8080  # Changed from 80 to avoid privileged port issues
-  
-  # Color scheme selector - change this to switch themes quickly!
-  colorScheme: "green"  # Options: "blue", "green", "pink", "red"
+# Basic configuration
+replicaCount: 2
 
-  # Service configuration - NodePort with specific port for reliable access
-  service:
-    type: NodePort
-    ports:
-      http: 80
-    targetPort:
-      http: http
-    nodePorts:
-      http: "30080"  # Specific NodePort for easy access
-  
-  # Resource limits
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  
-  # Disable features we don't need
-  ingress:
-    enabled: false
-  
-  # Security settings
-  containerSecurityContext:
-    enabled: false
-  
-  podSecurityContext:
-    enabled: false
+# Image settings - use kodekloud/webapp-color
+image:
+  repository: kodekloud/webapp-color
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Container configuration
+containerPort: 8080
+
+# Color selector - change this to switch colors instantly!
+# The webapp-color container accepts: red, green, blue, darkblue, pink
+appColor: "green"
+
+# Service configuration - NodePort with specific port for reliable access
+service:
+  type: NodePort
+  port: 80
+  nodePort: 30080  # Specific NodePort for easy access
+
+# Resource limits
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Optional overrides
+nameOverride: ""
+fullnameOverride: ""
