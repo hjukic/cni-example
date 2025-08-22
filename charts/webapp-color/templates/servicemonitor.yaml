@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: webapp-color
+  labels:
+    app: webapp-color
+spec:
+  selector:
+    matchLabels:
+      app: webapp-color
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s

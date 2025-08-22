@@ -9,15 +9,20 @@ cni-example/
 ├── charts/
 │   ├── applications/              # ArgoCD Application definitions
 │   │   ├── templates/            # Application CRD templates
-│   │   │   └── webapp-color.yaml # Webapp-color application definition
+│   │   │   ├── webapp-color.yaml # Webapp-color application definition
+│   │   │   └── monitoring.yaml   # Monitoring stack definition
 │   │   ├── Chart.yaml            # Applications chart
 │   │   └── values.yaml           # Global application settings
 │   ├── webapp-color/             # Webapp-color application chart
 │   │   ├── Chart.yaml            # Custom chart definition
 │   │   ├── templates/            # Kubernetes manifests
 │   │   │   ├── deployment.yaml   # Deployment template
-│   │   │   └── service.yaml      # Service template
+│   │   │   ├── service.yaml      # Service template
+│   │   │   └── servicemonitor.yaml # Prometheus monitoring
 │   │   └── values.yaml           # Custom values for webapp-color
+│   ├── monitoring/               # Complete monitoring stack
+│   │   ├── Chart.yaml            # Points to kube-prometheus-stack
+│   │   └── values.yaml           # Monitoring configuration
 │   └── bootstrap.yaml            # Start everything with ONE file
 └── README.md                      # This file
 ```
@@ -112,20 +117,29 @@ Open: http://localhost:8080
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 ```
 
-### Access Webapp-Color Application
+### Access Applications
 
-The webapp is accessible via NodePort on port 30080:
-
-**Option 1: Direct NodePort access**
+**Webapp-Color Application:**
 ```bash
-# Access via cluster IP (if using Docker Desktop)
+# Direct NodePort access
 http://localhost:30080
-```
 
-**Option 2: Port-forward (alternative)**
-```bash
+# Or port-forward (alternative)
 kubectl port-forward -n webapp-color svc/webapp-color 8081:80
 # Then open: http://localhost:8081
+```
+
+**Monitoring Stack:**
+```bash
+# Grafana Dashboard (username: admin, password: admin123)
+http://localhost:30000
+
+# Prometheus UI
+http://localhost:30001
+
+# AlertManager UI
+kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-st-alertmanager 9093:9093
+# Then open: http://localhost:9093
 ```
 
 ## 🔎 Verify Deployment
@@ -133,11 +147,15 @@ kubectl port-forward -n webapp-color svc/webapp-color 8081:80
 # See the ArgoCD Applications
 kubectl get applications -n argocd
 
-# See the webapp-color pods in the webapp-color namespace (created by ArgoCD)
+# See the webapp-color pods
 kubectl get pods -n webapp-color
 
-# Check the service
+# See the monitoring stack
+kubectl get pods -n monitoring
+
+# Check services
 kubectl get svc -n webapp-color
+kubectl get svc -n monitoring
 ```
 
 ## 🧹 Clean Up (manual)
@@ -156,6 +174,7 @@ kubectl delete namespace argocd
 - **Custom Helm Charts**: Simple custom chart without external dependencies
 - **Visual Configuration Changes**: Change webapp colors by modifying values.yaml
 - **Rollback Capabilities**: Demonstrate ArgoCD rollback vs Git revert workflows
+- **Complete Monitoring**: Prometheus, Grafana, and AlertManager via GitOps
 - **Clean Separation**: Application definitions separate from chart customizations
 
 ## 🎨 GitOps Demo: Color Changes
@@ -182,6 +201,12 @@ git push
 - Visit the webapp: http://localhost:30080
 - See the color change immediately!
 
+### 4. **Monitor the Changes**
+- Open Grafana: http://localhost:30000 (admin/admin123)
+- Watch metrics during deployment
+- See HTTP request patterns change
+- Monitor resource usage during sync
+
 ## 🔄 Rollback Demo
 
 ### Setup for Rollback Demo
@@ -203,6 +228,34 @@ Edit `charts/applications/templates/webapp-color.yaml`:
 # Uncomment for full GitOps
 automated:
   selfHeal: true
+```
+
+## 📊 Monitoring Demo
+
+### Explore Grafana Dashboards
+1. **Open Grafana**: http://localhost:30000 (admin/admin123)
+2. **Browse dashboards**: 
+   - Kubernetes / Compute Resources / Cluster
+   - Kubernetes / Compute Resources / Namespace (Pods)
+   - Node Exporter / Nodes
+
+### Monitor Your Webapp
+1. **Generate traffic**: Visit http://localhost:30080 and refresh multiple times
+2. **Watch metrics**: See HTTP requests appear in Prometheus/Grafana
+3. **Scale the app**: `kubectl scale deployment webapp-color -n webapp-color --replicas=3`
+4. **Observe changes**: Watch pod metrics update in real-time
+
+### Prometheus Queries
+Open Prometheus (http://localhost:30001) and try these queries:
+```promql
+# CPU usage of webapp-color pods
+rate(container_cpu_usage_seconds_total{namespace="webapp-color"}[5m])
+
+# Memory usage
+container_memory_usage_bytes{namespace="webapp-color"}
+
+# HTTP requests (if your app exposes metrics)
+http_requests_total{job="webapp-color"}
 ```
 
 ## ➕ Adding New Applications
