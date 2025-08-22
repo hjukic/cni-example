@@ -33,6 +33,11 @@ kube-prometheus-stack:
 
   # Prometheus configuration
   prometheus:
+    # Service configuration for NodePort access
+    service:
+      type: NodePort
+      nodePort: 30001  # Access Prometheus at http://localhost:30001
+      
     prometheusSpec:
       # Resource limits for demo environment
       resources:
@@ -48,14 +53,14 @@ kube-prometheus-stack:
       
       # Retention for demo
       retention: 7d
-      
-      # Service for access
-      service:
-        type: NodePort
-        nodePort: 30001  # Access Prometheus at http://localhost:30001
 
   # AlertManager configuration
   alertmanager:
+    # Service configuration for NodePort access
+    service:
+      type: NodePort
+      nodePort: 30002  # Access AlertManager at http://localhost:30002
+      
     alertmanagerSpec:
       # Resource limits for demo
       resources:

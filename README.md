@@ -138,8 +138,7 @@ http://localhost:30000
 http://localhost:30001
 
 # AlertManager UI
-kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-st-alertmanager 9093:9093
-# Then open: http://localhost:9093
+http://localhost:30002
 ```
 
 ## 🔎 Verify Deployment
@@ -213,9 +212,7 @@ git push
 ### Explore Grafana Dashboards
 1. **Open Grafana**: http://localhost:30000 (admin/admin123)
 2. **Browse dashboards**: 
-   - Kubernetes / Compute Resources / Cluster
-   - Kubernetes / Compute Resources / Namespace (Pods)
-   - Node Exporter / Nodes
+   - Kubernetes / Kubelet
 
 ### Monitor Your Webapp
 1. **Generate traffic**: Visit http://localhost:30080 and refresh multiple times
