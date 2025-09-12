@@ -9,20 +9,15 @@ cni-example/
 ├── charts/
 │   ├── applications/              # ArgoCD Application definitions
 │   │   ├── templates/            # Application CRD templates
-│   │   │   ├── webapp-color.yaml # Webapp-color application definition
-│   │   │   └── monitoring.yaml   # Monitoring stack definition
+│   │   │   └── webapp-color.yaml # Webapp-color application definition
 │   │   ├── Chart.yaml            # Applications chart
 │   │   └── values.yaml           # Global application settings
 │   ├── webapp-color/             # Webapp-color custom chart
 │   │   ├── Chart.yaml            # Custom chart definition
 │   │   ├── templates/            # Kubernetes manifests
 │   │   │   ├── deployment.yaml   # Deployment template
-│   │   │   ├── service.yaml      # Service template
-│   │   │   └── servicemonitor.yaml # Prometheus monitoring
+│   │   │   └── service.yaml      # Service template
 │   │   └── values.yaml           # Custom values for webapp-color
-│   ├── monitoring/               # Monitoring stack using official chart
-│   │   ├── Chart.yaml            # Points to kube-prometheus-stack
-│   │   └── values.yaml           # Monitoring configuration
 │   └── bootstrap.yaml            # Start everything with ONE file
 └── README.md                      # This file
 ```
@@ -129,17 +124,6 @@ kubectl port-forward -n webapp-color svc/webapp-color 8081:80
 # Then open: http://localhost:8081
 ```
 
-**Monitoring Stack:**
-```bash
-# Grafana Dashboard (username: admin, password: admin123)
-http://localhost:30000
-
-# Prometheus UI
-http://localhost:30001
-
-# AlertManager UI
-http://localhost:30002
-```
 
 ## 🔎 Verify Deployment
 ```bash
@@ -149,12 +133,8 @@ kubectl get applications -n argocd
 # See the webapp-color pods
 kubectl get pods -n webapp-color
 
-# See the monitoring stack
-kubectl get pods -n monitoring
-
 # Check services
 kubectl get svc -n webapp-color
-kubectl get svc -n monitoring
 ```
 
 ## 🧹 Clean Up (manual)
@@ -170,11 +150,8 @@ kubectl delete namespace argocd
 
 - **GitOps**: Kubernetes state defined in Git and applied by ArgoCD
 - **App of Apps**: A single ArgoCD Application manages all other applications
-- **Consistent Structure**: Both apps follow the same chart organization pattern
-- **Mixed Chart Types**: Custom charts (webapp-color) + Official charts (monitoring)  
 - **Visual Configuration Changes**: Change webapp colors by modifying values.yaml
 - **Rollback Capabilities**: Demonstrate ArgoCD rollback vs Git revert workflows
-- **Complete Monitoring**: Prometheus, Grafana, and AlertManager via GitOps
 - **Clean Separation**: Application definitions separate from chart customizations
 
 ## 🎨 GitOps Demo: Color Changes
@@ -201,37 +178,6 @@ git push
 - Visit the webapp: http://localhost:30080
 - See the color change immediately!
 
-### 4. **Monitor the Changes**
-- Open Grafana: http://localhost:30000 (admin/admin123)
-- Watch metrics during deployment
-- See HTTP request patterns change
-- Monitor resource usage during sync
-
-## 📊 Monitoring Demo
-
-### Explore Grafana Dashboards
-1. **Open Grafana**: http://localhost:30000 (admin/admin123)
-2. **Browse dashboards**: 
-   - Kubernetes / Kubelet
-
-### Monitor Your Webapp
-1. **Generate traffic**: Visit http://localhost:30080 and refresh multiple times
-2. **Watch metrics**: See HTTP requests appear in Prometheus/Grafana
-3. **Scale the app**: `kubectl scale deployment webapp-color -n webapp-color --replicas=3`
-4. **Observe changes**: Watch pod metrics update in real-time
-
-### Prometheus Queries
-Open Prometheus (http://localhost:30001) and try these queries:
-```promql
-# CPU usage of webapp-color pods
-rate(container_cpu_usage_seconds_total{namespace="webapp-color"}[5m])
-
-# Memory usage
-container_memory_usage_bytes{namespace="webapp-color"}
-
-# HTTP requests (if your app exposes metrics)
-http_requests_total{job="webapp-color"}
-```
 
 ## ➕ Adding New Applications
 
@@ -274,9 +220,7 @@ spec:
 
 1. **Bootstrap** deploys the `applications` chart once
 2. **Applications chart** creates ArgoCD Applications for each app
-3. **Consistent structure** with two chart types:
-   - **Custom charts** (webapp-color): Local Kubernetes templates
-   - **Official charts** (monitoring): Dependencies on external Helm charts with custom values
+3. **Custom charts**: Local Kubernetes templates with configurable values
 4. **ArgoCD automatically** deploys everything from Git commits
 5. **Visual feedback** through webapp color changes makes GitOps concepts tangible
 6. **No manual deployment** needed after bootstrap - pure GitOps!
