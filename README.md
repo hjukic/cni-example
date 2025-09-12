@@ -146,6 +146,8 @@ kubectl delete application applications -n argocd
 kubectl delete namespace argocd
 ```
 
+Reset Cluster in Docker-Desktop
+
 ## 🧠 What This Demonstrates
 
 - **GitOps**: Kubernetes state defined in Git and applied by ArgoCD
