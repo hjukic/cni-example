@@ -9,3 +9,8 @@ applications:
     enabled: true
     project: default
     namespace: webapp-color
+  
+  monitoring:
+    enabled: true
+    project: default
+    namespace: monitoring
