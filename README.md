@@ -31,10 +31,24 @@ cni-example/
 
 ## 🛠️ Installing Required Tools
 
+### WinGet Package manager
+
+Open the Powershell as Admin and run following command to download the WinGet Package to the ``C:\dev`` Folder
+
+```powershell
+Invoke-WebRequest -Uri “https://github.com/microsoft/winget-cli/releases/download/v1.11.430/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle” -OutFile “C:\dev\WinGet.msixbundle”
+```
+
+Install the WinGet Package
+
+```powershell
+Add-AppxPackage “C:\dev\WinGet.msixbundle”
+```
+
 ### kubectl (Kubernetes command line tool)
 
 **Windows:**
-```bash
+```powerhsell
 winget install Kubernetes.kubectl
 ```
 
@@ -48,7 +62,7 @@ sudo mv kubectl /usr/local/bin/
 ### Helm (Kubernetes package manager)
 
 **Windows:**
-```bash
+```powerhsell
 winget install Helm.Helm
 ```
 
@@ -58,7 +72,7 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
 
 ### Verify Installation
-```bash
+```powerhsell
 kubectl version --client
 helm version
 ```
@@ -76,7 +90,6 @@ helm version
 
 ### Verify Kubernetes is Running:
 ```bash
-kubectl cluster-info
 kubectl get nodes
 ```
 
@@ -120,12 +133,6 @@ kubectl port-forward -n webapp-color svc/webapp-color 8081:80
 # Then open: http://localhost:8081
 ```
 
-
-## 🧹 Clean Up (manual)
-```bash
-Reset Cluster in Docker-Desktop
-```
-
 ## 🎨 GitOps Demo: Color Changes
 
 This project is perfect for demonstrating GitOps workflows with visual feedback:
@@ -158,3 +165,8 @@ git push
 4. **ArgoCD automatically** deploys everything from Git commits
 5. **Visual feedback** through webapp color changes makes GitOps concepts tangible
 6. **No manual deployment** needed after bootstrap - pure GitOps!
+
+## 🧹 Clean Up (manual)
+```bash
+"Reset Cluster" in Docker-Desktop Settings
+```
