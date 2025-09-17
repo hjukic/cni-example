@@ -19,15 +19,17 @@ cni-example/
 │   │   │   └── service.yaml      # Service template
 │   │   └── values.yaml           # Custom values for webapp-color
 │   └── bootstrap.yaml            # Start everything with ONE file
-└── README.md                      # This file
+└── README.md                      # Readme file
 ```
 
 ## ✅ Prerequisites
 
-- Docker Desktop with Kubernetes enabled
-- winget Package Manager
-- kubectl installed and in PATH
-- Helm 
+Before getting started, ensure you have the following tools installed:
+
+- 🐳 **Docker Desktop** with Kubernetes enabled
+- 📦 **WinGet Package Manager** (Windows package manager)
+- ☸️ **kubectl** installed and available in your PATH
+- 🎯 **Helm** (Kubernetes package manager) 
 
 ## 🛠️ Installing Required Tools
 
@@ -95,7 +97,15 @@ kubectl get nodes
 
 ## 🚀 Quick Start
 
-### Install ArgoCD with Helm
+### 1. Clone the Repository
+First, make sure you have the repository checked out locally:
+
+```bash
+git clone <repository-url>
+cd cni-example
+```
+
+### 2. Install ArgoCD with Helm
 ```bash
 # Create namespace and install ArgoCD
 kubectl create namespace argocd
@@ -103,13 +113,13 @@ helm repo add argo https://argoproj.github.io/argo-helm
 helm install argocd argo/argo-cd --namespace argocd --set server.extraArgs[0]=--insecure
 ```
 
-### Bootstrap the GitOps platform
+### 3. Bootstrap the GitOps platform
 ```bash
 kubectl apply -f charts/bootstrap.yaml
 ```
 This creates an ArgoCD Application that manages all other applications through the `charts/applications` chart.
 
-### Access ArgoCD UI
+### 4. Access ArgoCD UI
 ```bash
 kubectl port-forward -n argocd svc/argocd-server 8080:80
 ```
@@ -127,10 +137,6 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 ```bash
 # Direct NodePort access
 http://localhost:30080
-
-# Or port-forward (alternative)
-kubectl port-forward -n webapp-color svc/webapp-color 8081:80
-# Then open: http://localhost:8081
 ```
 
 ## 🎨 GitOps Demo: Color Changes
@@ -170,6 +176,3 @@ git push
 ```bash
 "Reset Cluster" in Docker-Desktop Settings
 ```
-
-
-test123
