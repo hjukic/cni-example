@@ -163,6 +163,37 @@ git push
 - Visit the webapp: http://localhost:30080
 - See the color change immediately!
 
+## 🔄 GitOps Demo: Rollback with Git Revert
+
+Demonstrating GitOps rollback capabilities:
+
+### 1. **Revert the Last Color Change**
+```bash
+# Revert the most recent commit (color change)
+git revert HEAD
+```
+
+### 2. **Push the Revert**
+```bash
+git push
+```
+
+### 3. **Watch Automatic Rollback**
+- ArgoCD detects the revert commit
+- Automatically syncs the rollback
+- Visit the webapp: http://localhost:30080
+- See the color revert to the previous state!
+
+### 4. **Alternative: Revert to Specific Commit**
+```bash
+# First, check recent commits
+git log --oneline -5
+
+# Then revert to a specific commit
+git revert <commit-hash>
+git push
+```
+
 ## 🎯 How It Works
 
 1. **Bootstrap** deploys the `applications` chart once
