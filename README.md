@@ -25,6 +25,7 @@ cni-example/
 ## ✅ Prerequisites
 
 - Docker Desktop with Kubernetes enabled
+- winget Package Manager
 - kubectl installed and in PATH
 - Helm 
 
@@ -89,11 +90,6 @@ helm repo add argo https://argoproj.github.io/argo-helm
 helm install argocd argo/argo-cd --namespace argocd --set server.extraArgs[0]=--insecure
 ```
 
-### Wait for ArgoCD to be ready
-```bash
-kubectl wait --for=condition=Available deployment/argocd-server -n argocd --timeout=300s
-```
-
 ### Bootstrap the GitOps platform
 ```bash
 kubectl apply -f charts/bootstrap.yaml
@@ -125,36 +121,10 @@ kubectl port-forward -n webapp-color svc/webapp-color 8081:80
 ```
 
 
-## 🔎 Verify Deployment
-```bash
-# See the ArgoCD Applications
-kubectl get applications -n argocd
-
-# See the webapp-color pods
-kubectl get pods -n webapp-color
-
-# Check services
-kubectl get svc -n webapp-color
-```
-
 ## 🧹 Clean Up (manual)
 ```bash
-# Remove the applications Application first
-kubectl delete application applications -n argocd
-
-# Remove ArgoCD
-kubectl delete namespace argocd
-```
-
 Reset Cluster in Docker-Desktop
-
-## 🧠 What This Demonstrates
-
-- **GitOps**: Kubernetes state defined in Git and applied by ArgoCD
-- **App of Apps**: A single ArgoCD Application manages all other applications
-- **Visual Configuration Changes**: Change webapp colors by modifying values.yaml
-- **Rollback Capabilities**: Demonstrate ArgoCD rollback vs Git revert workflows
-- **Clean Separation**: Application definitions separate from chart customizations
+```
 
 ## 🎨 GitOps Demo: Color Changes
 
@@ -179,44 +149,6 @@ git push
 - Watch the webapp-color application sync automatically
 - Visit the webapp: http://localhost:30080
 - See the color change immediately!
-
-
-## ➕ Adding New Applications
-
-To add a new application (e.g., another webapp):
-
-1. **Create Application Definition** in `charts/applications/templates/my-app.yaml`:
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  namespace: argocd
-  name: my-app
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: default
-  source:
-    repoURL: {{ .Values.global.repoURL }}
-    path: charts/my-app
-    targetRevision: {{ .Values.global.targetRevision }}
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: my-app
-  syncPolicy:
-    automated:
-     selfHeal: true  # Comment out for demo flexibility
-    syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
-```
-
-2. **Create Chart Folder** `charts/my-app/` with:
-   - `Chart.yaml` - Chart metadata
-   - `values.yaml` - Configuration values
-   - `templates/` - Kubernetes manifests (deployment.yaml, service.yaml)
-
-3. **Commit and push** - ArgoCD will automatically deploy the new application!
 
 ## 🎯 How It Works
 
