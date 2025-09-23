@@ -207,3 +207,21 @@ git push
 ```bash
 "Reset Cluster" in Docker-Desktop Settings
 ```
+
+## Proxy Troubleshooting
+
+in case of issues when trying to download helm or other packages, the proxy settings have to be configured:
+
+```sh
+sudo vim /etc/environment
+```
+
+then add the following to the file
+```
+http_proxy="http://webproxy.soka-bau.de:8080"
+https_proxy="http://webproxy.soka-bau.de:8080"
+```
+
+```sh
+source /etc/environment
+```
