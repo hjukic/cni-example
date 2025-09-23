@@ -207,5 +207,3 @@ git push
 ```bash
 "Reset Cluster" in Docker-Desktop Settings
 ```
-
-testing the shortcuts
