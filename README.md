@@ -207,6 +207,3 @@ git push
 ```bash
 "Reset Cluster" in Docker-Desktop Settings
 ```
-
-test
-12345
