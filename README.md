@@ -210,18 +210,44 @@ git push
 
 ## Proxy Troubleshooting
 
-in case of issues when trying to download helm or other packages, the proxy settings have to be configured:
+### Finding Windows Host IP Address from WSL
 
-```sh
-sudo vim /etc/environment
+To configure proxy settings in WSL, you need to find the Windows host IP address and add it to your ~/.bashrc file.
+
+**Step 1: Find the Windows Host IP Address**
+```bash
+# Method 1: Gets the actual Windows host IP
+cat /etc/resolv.conf | grep nameserver | awk '{print $2}'
+
+# Method 2: Using ip route (original method)
+ip route show | grep -i default | awk '{ print $3}'
+
+**Step 2: Add Windows Host IP to ~/.bashrc**
+```bash
+# Edit your ~/.bashrc file
+vim ~/.bashrc
+
+# Add these lines (replace <WINDOWS_HOST_IP> with the IP from step 1)
+export http_proxy="http://<WINDOWS_HOST_IP>:8080"
+export https_proxy="http://<WINDOWS_HOST_IP>:8080"
+export HTTP_PROXY="http://<WINDOWS_HOST_IP>:8080"
+export HTTPS_PROXY="http://<WINDOWS_HOST_IP>:8080"
 ```
 
-then add the following to the file
-```
-http_proxy="http://webproxy.soka-bau.de:8080"
-https_proxy="http://webproxy.soka-bau.de:8080"
+**Step 3: Apply the changes**
+```bash
+# Reload your bash configuration
+source ~/.bashrc
+
+# Or restart your WSL session
+exit
+# Then reopen WSL
 ```
 
-```sh
-source /etc/environment
-```
+## WSL Troubleshooting
+
+
+Install and Configure CNTLM Proxy (link to the guide)
+## WSL Configuration
+Hyper-V Firewall aktiviert (Aus)
+Automatischer Proxy Aktivier (Ein)
