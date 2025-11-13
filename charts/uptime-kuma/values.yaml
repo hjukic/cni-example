@@ -1,11 +1,17 @@
 # Uptime Kuma Helm chart values
 # For all available options, see: https://artifacthub.io/packages/helm/uptime-kuma/uptime-kuma
 
-# Service configuration
-service:
-  type: NodePort
-  port: 3001
-  nodePort: 30001  # Optional: specify a port between 30000-32767
+uptime-kuma:
+  # Storage configuration
+  persistence:
+    enabled: true
+    size: 1Gi
+  
+  # Service configuration
+  service:
+    type: NodePort
+    port: 3001
+    nodePort: 30001  # Optional: specify a port between 30000-32767
 
 
 image:
