@@ -5,6 +5,7 @@
 replicaCount: 2
 
 # Image settings - use kodekloud/webapp-color
+# The image tag serves as the application version
 image:
   repository: kodekloud/webapp-color
   tag: "latest"
