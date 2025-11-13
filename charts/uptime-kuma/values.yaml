@@ -1,0 +1,35 @@
+# Uptime Kuma Helm chart values
+# For all available options, see: https://artifacthub.io/packages/helm/uptime-kuma/uptime-kuma
+
+uptime-kuma:
+  # Storage configuration
+  persistence:
+    enabled: true
+    size: 1Gi
+    # storageClass: ""  # Uncomment and set your storage class if needed
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 3001
+  
+  # Ingress configuration (optional)
+  # ingress:
+  #   enabled: true
+  #   className: nginx
+  #   hosts:
+  #     - host: uptime-kuma.example.com
+  #       paths:
+  #         - path: /
+  #           pathType: Prefix
+  #   tls: []
+  
+  # Resource limits (adjust as needed)
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+

@@ -2,10 +2,3 @@
 global:
   repoURL: https://github.com/hjukic/cni-example
   targetRevision: HEAD
-
-# Application configurations
-applications:
-  webapp-color:
-    enabled: true
-    project: default
-    namespace: webapp-color
