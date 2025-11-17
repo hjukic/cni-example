@@ -1,6 +1,6 @@
 # Configuration for Uptime Kuma version sync CronJob
 
-namespace: default
+namespace: version-sync
 
 # CronJob schedule (cron format)
 schedule: "*/5 * * * *"  # Every 5 minutes
