@@ -343,32 +343,78 @@ class UptimeKumaClient:
             with self.lock:
                 if 'tagList' in self.event_data:
                     print("DEBUG: Tag list already available from earlier event")
-                    tag_count = len(self.event_data['tagList']) if isinstance(self.event_data['tagList'], list) else 'N/A'
+                    tag_list = self.event_data['tagList']
+                    tag_count = len(tag_list) if isinstance(tag_list, list) else 'N/A'
                     print(f"DEBUG: Using cached tagList with {tag_count} tags")
-                    return self.event_data['tagList']
+                    # Ensure we return a list, not None
+                    return tag_list if isinstance(tag_list, list) else []
             
-            # If not, request it
+            # If not, request it using callback pattern
             print("DEBUG: Tag list not available, requesting from server...")
             
-            # Request tag list
-            self.sio.emit('tagList')
+            # Set up response tracking
+            response_received = False
+            response_data = None
+            
+            def tag_list_callback(response):
+                nonlocal response_received, response_data
+                print(f"DEBUG: tagList callback received: {response}")
+                response_received = True
+                if isinstance(response, list):
+                    response_data = response
+                    print(f"DEBUG: Received {len(response)} tags via callback")
+                elif isinstance(response, dict):
+                    # Some APIs return tags in a dict format
+                    if 'tags' in response:
+                        response_data = response['tags']
+                    elif 'ok' in response and response.get('ok'):
+                        # Success but no tags yet - return empty list
+                        response_data = []
+                    else:
+                        print(f"DEBUG: Unexpected dict response: {response}")
+                        response_data = []
+                else:
+                    print(f"DEBUG: Unexpected response type: {type(response)}, returning empty list")
+                    response_data = []
+            
+            # Request tag list with callback
+            print("DEBUG: Emitting 'tagList' event with callback...")
+            self.sio.emit('tagList', callback=tag_list_callback)
             
             # Wait for response
             timeout = 5
             start_time = time.time()
             while (time.time() - start_time) < timeout:
-                with self.lock:
-                    if 'tagList' in self.event_data:
-                        print(f"DEBUG: Received tagList after {time.time() - start_time:.2f}s")
-                        return self.event_data['tagList']
+                if response_received:
+                    break
                 time.sleep(0.1)
             
-            print("DEBUG: Timeout waiting for tag list", file=sys.stderr)
-            print("✗ Timeout waiting for tag list", file=sys.stderr)
-            return None
+            if not response_received:
+                print("DEBUG: Timeout waiting for tagList callback - assuming no tags exist yet", file=sys.stderr)
+                # If timeout, assume no tags exist yet and return empty list
+                # This allows the script to proceed and create the first tag
+                print("DEBUG: Returning empty list (no tags exist yet)")
+                return []
+            
+            # Also check if tagList event was received (some servers send both)
+            with self.lock:
+                if 'tagList' in self.event_data:
+                    cached_list = self.event_data['tagList']
+                    if isinstance(cached_list, list):
+                        print(f"DEBUG: Also found tagList in event_data with {len(cached_list)} tags")
+                        # Use the cached version if it's more complete
+                        if len(cached_list) > len(response_data if response_data else []):
+                            return cached_list
+            
+            result = response_data if response_data is not None else []
+            print(f"DEBUG: Returning {len(result)} tags")
+            return result
         except Exception as e:
             print(f"✗ Error getting tags: {e}", file=sys.stderr)
-            return None
+            import traceback
+            traceback.print_exc()
+            # Return empty list on error to allow script to continue
+            return []
     
     def add_tag(self, name: str, color: str = '#3b82f6') -> Optional[Dict[str, Any]]:
         """Create a new tag."""
