@@ -14,8 +14,5 @@ spec:
       {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}
       {{- end }}
-    - port: 8081
-      targetPort: version
-      name: version
   selector:
     app: webapp-color

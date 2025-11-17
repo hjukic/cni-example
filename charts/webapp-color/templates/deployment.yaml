@@ -25,24 +25,13 @@ spec:
           env:
             - name: APP_COLOR
               value: {{ .Values.appColor | quote }}
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-        # Simple sidecar to serve /version endpoint
-        - name: version-server
-          image: busybox:1.36.1
-          command: ['httpd', '-f', '-v', '-p', '8081', '-h', '/version']
-          ports:
-            - name: version
-              containerPort: 8081
           volumeMounts:
             - name: version-config
-              mountPath: /version
+              mountPath: /app/version.txt
+              subPath: version.txt
               readOnly: true
           resources:
-            limits:
-              memory: 16Mi
-            requests:
-              memory: 8Mi
+            {{- toYaml .Values.resources | nindent 12 }}
       volumes:
         - name: version-config
           configMap:
