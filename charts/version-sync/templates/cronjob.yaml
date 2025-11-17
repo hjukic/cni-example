@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: uptime-kuma-version-sync
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: version-sync
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: version-sync
+        spec:
+          containers:
+          - name: version-sync
+            image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            command: ["sh", "-c", "pip install --no-cache-dir requests && python3 /app/update-uptime-kuma-version.py"]
+            volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+            env:
+            - name: UPTIME_KUMA_URL
+              value: {{ .Values.uptimeKuma.url | quote }}
+            - name: UPTIME_KUMA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.uptimeKuma.secretName }}
+                  key: api-token
+            - name: SERVICES_CONFIG
+              value: {{ .Values.services | toJson | quote }}
+            - name: VERIFY_SSL
+              value: {{ .Values.verifySSL | quote }}
+            resources:
+              {{- toYaml .Values.resources | nindent 14 }}
+          volumes:
+          - name: script
+            configMap:
+              name: version-sync-script
+              defaultMode: 0755
+          restartPolicy: OnFailure
+

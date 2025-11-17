@@ -1,0 +1,42 @@
+# Configuration for Uptime Kuma version sync CronJob
+
+namespace: default
+
+# CronJob schedule (cron format)
+schedule: "*/5 * * * *"  # Every 5 minutes
+
+# Container image configuration
+# Use a standard Python image - no need to build/push custom images!
+image:
+  repository: python
+  tag: "3.11-slim"
+  pullPolicy: IfNotPresent
+
+# Uptime Kuma configuration
+uptimeKuma:
+  url: "http://uptime-kuma.uptime-kuma.svc.cluster.local:3001"
+  secretName: "uptime-kuma-api-token"
+  # Create the secret manually: kubectl create secret generic uptime-kuma-api-token --from-literal=api-token='YOUR_TOKEN' -n <namespace>
+
+# Services configuration
+# Define all services to monitor. Each service will have its version synced to Uptime Kuma.
+services:
+  - monitorName: "webapp-color"
+    versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
+    tagPrefix: "version"  # Optional, defaults to "version"
+  # Add more services here:
+  # - monitorName: "another-service"
+  #   versionEndpoint: "http://another-service.namespace.svc.cluster.local/version.txt"
+  #   tagPrefix: "version"
+
+# SSL verification (set to "true" if using HTTPS)
+verifySSL: "false"
+
+# Resource limits
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
