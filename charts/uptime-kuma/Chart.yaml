@@ -2,7 +2,6 @@ apiVersion: v2
 name: uptime-kuma
 description: Uptime Kuma monitoring application
 version: 1.0.0
-appVersion: "2.0.2"
 
 dependencies:
   - name: uptime-kuma

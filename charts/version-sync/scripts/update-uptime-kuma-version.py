@@ -50,7 +50,27 @@ def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
             verify=VERIFY_SSL
         )
         response.raise_for_status()
-        monitors = response.json()
+        
+        # Check if response has content
+        if not response.text:
+            print(f"✗ Error fetching monitors: Empty response from API", file=sys.stderr)
+            print(f"   Status code: {response.status_code}", file=sys.stderr)
+            return None
+        
+        # Try to parse JSON
+        try:
+            monitors = response.json()
+        except json.JSONDecodeError as e:
+            print(f"✗ Error parsing monitors response: {e}", file=sys.stderr)
+            print(f"   Status code: {response.status_code}", file=sys.stderr)
+            print(f"   Response content (first 500 chars): {response.text[:500]}", file=sys.stderr)
+            return None
+        
+        # Check if monitors is a list
+        if not isinstance(monitors, list):
+            print(f"✗ Error: Expected list of monitors, got {type(monitors)}", file=sys.stderr)
+            print(f"   Response: {response.text[:500]}", file=sys.stderr)
+            return None
         
         for monitor in monitors:
             if monitor.get('name') == monitor_name:
@@ -61,6 +81,9 @@ def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
         return None
     except requests.exceptions.RequestException as e:
         print(f"✗ Error fetching monitors: {e}", file=sys.stderr)
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"   Status code: {e.response.status_code}", file=sys.stderr)
+            print(f"   Response: {e.response.text[:500]}", file=sys.stderr)
         return None
 
 
@@ -80,7 +103,18 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
             verify=VERIFY_SSL
         )
         response.raise_for_status()
-        tags = response.json()
+        
+        # Check if response has content
+        if not response.text:
+            print(f"✗ Error fetching tags: Empty response from API", file=sys.stderr)
+            return None
+        
+        try:
+            tags = response.json()
+        except json.JSONDecodeError as e:
+            print(f"✗ Error parsing tags response: {e}", file=sys.stderr)
+            print(f"   Response: {response.text[:500]}", file=sys.stderr)
+            return None
         
         # Check if tag exists
         for tag in tags:
