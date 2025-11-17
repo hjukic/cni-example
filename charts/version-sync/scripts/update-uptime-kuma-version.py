@@ -156,29 +156,39 @@ class UptimeKumaClient:
             login_success = False
             login_error = None
             
-            # Callback function for Socket.io emit
             def login_callback(response):
                 nonlocal login_response_received, login_success, login_error
-                print(f"DEBUG: Received login callback: {response}")
                 login_response_received = True
-                if isinstance(response, dict):
-                    if response.get('ok'):
-                        login_success = True
-                    else:
-                        login_error = response.get('msg', 'Authentication failed')
+                if response.get('ok'):
+                    login_success = True
                 else:
-                    # Handle non-dict responses
-                    login_error = f"Unexpected response type: {type(response)}"
+                    login_error = response.get('msg', 'Authentication failed')
+            
+            # Register callback for 'res' event specifically for login
+            # Use a unique event name to avoid conflicts
+            login_event_id = f'login_res_{int(time.time() * 1000)}'
+            
+            def login_res_handler(response):
+                nonlocal login_response_received, login_success, login_error
+                print(f"DEBUG: Received login response: {response}")
+                login_response_received = True
+                if response.get('ok'):
+                    login_success = True
+                else:
+                    login_error = response.get('msg', 'Authentication failed')
+            
+            # Register handler for 'res' event
+            self.sio.on('res', login_res_handler)
             
             # Verify we have credentials
             if not password:
                 print("✗ Error: Password is empty", file=sys.stderr)
                 return False
             
-            # Send login event with callback
+            # Send login event
             print(f"Attempting to authenticate as user: {username if username else '(empty)'}")
             print(f"DEBUG: Password length: {len(password)} characters")
-            print("DEBUG: Sending login event with callback...")
+            print("DEBUG: Sending login event...")
             try:
                 # According to API docs, login event format is: {username, password, token?}
                 # Note: token is optional (for 2FA)
@@ -187,11 +197,8 @@ class UptimeKumaClient:
                     'password': password
                 }
                 print(f"DEBUG: Login data: username='{login_data['username']}', password length={len(login_data['password'])}")
-                
-                # Use callback parameter instead of waiting for 'res' event
-                self.sio.emit('login', login_data, callback=login_callback)
-                print("DEBUG: Login event sent with callback, waiting for response...")
-                
+                self.sio.emit('login', login_data)
+                print("DEBUG: Login event sent, waiting for response...")
                 # Give it a moment to process
                 time.sleep(0.2)
             except Exception as e:
@@ -239,6 +246,12 @@ class UptimeKumaClient:
                 print("   2. The account is not locked", file=sys.stderr)
                 print("   3. The account has proper permissions", file=sys.stderr)
                 return False
+            
+            # Remove the callback
+            try:
+                self.sio.off('res', login_res_handler)
+            except:
+                pass  # Ignore if handler wasn't registered
             
             if not login_response_received:
                 print("✗ Authentication timeout - no response received", file=sys.stderr)
@@ -329,45 +342,33 @@ class UptimeKumaClient:
             return None
         
         try:
-            # Set up response tracking
-            response_received = False
-            response_data = None
-            response_error = None
+            # Clear any previous responses
+            while not self.response_queue.empty():
+                self.response_queue.get()
             
-            def tag_callback(response):
-                nonlocal response_received, response_data, response_error
-                response_received = True
-                if isinstance(response, dict):
-                    if response.get('ok'):
-                        response_data = response.get('tag')
-                    else:
-                        response_error = response.get('msg', 'Failed to create tag')
-                else:
-                    response_error = f"Unexpected response type: {type(response)}"
-            
-            # Send addTag event with callback
+            # Send addTag event
             self.sio.emit('addTag', {
                 'name': name,
                 'color': color
-            }, callback=tag_callback)
+            })
             
             # Wait for response
             timeout = 5
             start_time = time.time()
             while (time.time() - start_time) < timeout:
-                if response_received:
-                    break
-                time.sleep(0.1)
+                try:
+                    response = self.response_queue.get(timeout=0.5)
+                    if response.get('ok'):
+                        return response.get('tag')
+                    else:
+                        error_msg = response.get('msg', 'Failed to create tag')
+                        print(f"✗ Error creating tag: {error_msg}", file=sys.stderr)
+                        return None
+                except:
+                    continue
             
-            if not response_received:
-                print("✗ Timeout creating tag", file=sys.stderr)
-                return None
-            
-            if response_error:
-                print(f"✗ Error creating tag: {response_error}", file=sys.stderr)
-                return None
-            
-            return response_data
+            print("✗ Timeout creating tag", file=sys.stderr)
+            return None
         except Exception as e:
             print(f"✗ Error creating tag: {e}", file=sys.stderr)
             return None
@@ -379,42 +380,30 @@ class UptimeKumaClient:
             return False
         
         try:
-            # Set up response tracking
-            response_received = False
-            response_success = False
-            response_error = None
+            # Clear any previous responses
+            while not self.response_queue.empty():
+                self.response_queue.get()
             
-            def edit_callback(response):
-                nonlocal response_received, response_success, response_error
-                response_received = True
-                if isinstance(response, dict):
-                    if response.get('ok'):
-                        response_success = True
-                    else:
-                        response_error = response.get('msg', 'Failed to update monitor')
-                else:
-                    response_error = f"Unexpected response type: {type(response)}"
-            
-            # Send editMonitor event with callback
-            self.sio.emit('editMonitor', monitor_data, callback=edit_callback)
+            # Send editMonitor event
+            self.sio.emit('editMonitor', monitor_data)
             
             # Wait for response
             timeout = 5
             start_time = time.time()
             while (time.time() - start_time) < timeout:
-                if response_received:
-                    break
-                time.sleep(0.1)
+                try:
+                    response = self.response_queue.get(timeout=0.5)
+                    if response.get('ok'):
+                        return True
+                    else:
+                        error_msg = response.get('msg', 'Failed to update monitor')
+                        print(f"✗ Error updating monitor: {error_msg}", file=sys.stderr)
+                        return False
+                except:
+                    continue
             
-            if not response_received:
-                print("✗ Timeout updating monitor", file=sys.stderr)
-                return False
-            
-            if response_error:
-                print(f"✗ Error updating monitor: {response_error}", file=sys.stderr)
-                return False
-            
-            return response_success
+            print("✗ Timeout updating monitor", file=sys.stderr)
+            return False
         except Exception as e:
             print(f"✗ Error updating monitor: {e}", file=sys.stderr)
             return False
