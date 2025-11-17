@@ -503,10 +503,10 @@ class UptimeKumaClient:
                 else:
                     response_error = f"Unexpected response type: {type(response)}"
             
-            # Send addMonitorTag event with tag_id, monitor_id, and value
+            # Send addMonitorTag event with tagID and monitorID (camelCase as per API)
             self.sio.emit('addMonitorTag', {
-                'tag_id': tag_id,
-                'monitor_id': monitor_id,
+                'tagID': tag_id,
+                'monitorID': monitor_id,
                 'value': value
             }, callback=callback)
             
@@ -519,23 +519,25 @@ class UptimeKumaClient:
                 time.sleep(0.1)
             
             if not response_received:
-                print(f"   ⚠ Timeout adding tag to monitor (this might be OK)", file=sys.stderr)
-                # Don't fail immediately, tag might still be added
-                return True
+                print(f"   ✗ Timeout adding tag to monitor - no response from server", file=sys.stderr)
+                return False
             
             # Debug: print full response
             print(f"   Debug: addMonitorTag API response: {full_response}")
             
             if response_error:
-                print(f"   ⚠ Error response: {response_error}", file=sys.stderr)
-                # Still return True as some versions might not have this event
-                return True
+                print(f"   ✗ Error adding tag: {response_error}", file=sys.stderr)
+                return False
+            
+            if response_success:
+                print(f"   ✓ Tag added successfully via API")
             
             return response_success
         except Exception as e:
-            print(f"   ⚠ Exception adding monitor tag: {e}", file=sys.stderr)
-            # Don't fail, might be using older API version
-            return True
+            print(f"   ✗ Exception adding monitor tag: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            return False
     
     def delete_monitor_tag(self, tag_id: int, monitor_id: int) -> bool:
         """Remove a tag from a monitor using deleteMonitorTag event."""
@@ -554,10 +556,10 @@ class UptimeKumaClient:
                 if isinstance(response, dict) and response.get('ok'):
                     response_success = True
             
-            # Send deleteMonitorTag event
+            # Send deleteMonitorTag event with tagID and monitorID (camelCase as per API)
             self.sio.emit('deleteMonitorTag', {
-                'tag_id': tag_id,
-                'monitor_id': monitor_id
+                'tagID': tag_id,
+                'monitorID': monitor_id
             }, callback=callback)
             
             # Wait for response
@@ -697,43 +699,48 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         print(f"   Adding tag '{version_tag_name}' to monitor...")
         success = client.add_monitor_tag(version_tag_id, monitor_id, value='')
         
-        if success:
-            # Wait for the change to propagate
-            time.sleep(1.0)
-            
-            # Verify the tag was added
-            updated_monitors = client.get_monitors()
-            if updated_monitors:
-                updated_monitor = updated_monitors.get(str(monitor_id))
-                if updated_monitor:
-                    updated_tags = updated_monitor.get('tags', [])
-                    print(f"   Debug: Updated monitor tags: {updated_tags}")
-                    
-                    # Check if our tag is present
-                    tag_found = False
-                    for tag in updated_tags:
-                        if isinstance(tag, dict):
-                            tag_id = tag.get('tag_id') or tag.get('id')
-                            tag_name = tag.get('name', '')
-                        else:
-                            tag_id = tag
-                            tag_name = tag_map.get(tag_id, {}).get('name', '')
-                        
-                        if tag_id == version_tag_id or tag_name == version_tag_name:
-                            tag_found = True
-                            break
-                    
-                    if tag_found:
-                        print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
-                        return True
-                    else:
-                        print(f"⚠ Warning: Tag added but not found in monitor tags list", file=sys.stderr)
-                        print(f"   This may be normal - tag might be applied but not returned in API", file=sys.stderr)
-                        # Still consider it a success since add_monitor_tag returned True
-                        return True
+        if not success:
+            print(f"✗ Failed to add tag '{version_tag_name}' to monitor '{monitor_name}'", file=sys.stderr)
+            return False
         
-        print(f"✗ Failed to add tag '{version_tag_name}' to monitor '{monitor_name}'", file=sys.stderr)
-        return False
+        # Wait for the change to propagate
+        time.sleep(1.0)
+        
+        # Verify the tag was added
+        updated_monitors = client.get_monitors()
+        if updated_monitors:
+            updated_monitor = updated_monitors.get(str(monitor_id))
+            if updated_monitor:
+                updated_tags = updated_monitor.get('tags', [])
+                print(f"   Debug: Updated monitor tags: {updated_tags}")
+                
+                # Check if our tag is present
+                tag_found = False
+                for tag in updated_tags:
+                    if isinstance(tag, dict):
+                        tag_id = tag.get('tag_id') or tag.get('id')
+                        tag_name = tag.get('name', '')
+                    else:
+                        tag_id = tag
+                        tag_name = tag_map.get(tag_id, {}).get('name', '')
+                    
+                    if tag_id == version_tag_id or tag_name == version_tag_name:
+                        tag_found = True
+                        break
+                
+                if tag_found:
+                    print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
+                    return True
+                else:
+                    print(f"⚠ Warning: API said success but tag not found in monitor tags list", file=sys.stderr)
+                    print(f"   Debug: Expected tag ID {version_tag_id} or name '{version_tag_name}'", file=sys.stderr)
+                    # If API said success but we can't verify, still consider it a success
+                    # as verification might have timing issues
+                    return True
+        
+        # If we can't verify, but API said success, still return True
+        print(f"⚠ Warning: Could not verify tag was added (unable to fetch updated monitor)", file=sys.stderr)
+        return True
         
     except Exception as e:
         print(f"✗ Error updating monitor '{monitor_name}': {e}", file=sys.stderr)
