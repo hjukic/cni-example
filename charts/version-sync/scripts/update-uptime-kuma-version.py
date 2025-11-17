@@ -84,6 +84,16 @@ class UptimeKumaClient:
             print(f"✗ Connection error: {data}", file=sys.stderr)
             self.response_queue.put({'error': str(data)})
         
+        @self.sio.on('error')
+        def on_error(data):
+            print(f"✗ Socket.io error: {data}", file=sys.stderr)
+            self.response_queue.put({'error': str(data)})
+        
+        @self.sio.on('exception')
+        def on_exception(data):
+            print(f"✗ Server exception: {data}", file=sys.stderr)
+            self.response_queue.put({'error': str(data)})
+        
         # Generic response handler - will be used for callbacks
         # Note: We'll use specific callbacks for each operation instead of queue
         
@@ -126,8 +136,13 @@ class UptimeKumaClient:
             return False
         
         try:
-            # Wait a bit for connection to stabilize
-            time.sleep(0.5)
+            # Wait a bit for connection to stabilize (Socket.io needs time to establish)
+            time.sleep(1.0)
+            
+            # Verify we're still connected
+            if not self.connected:
+                print("✗ Connection lost before authentication", file=sys.stderr)
+                return False
             
             # Clear any previous responses
             while not self.response_queue.empty():
@@ -176,12 +191,16 @@ class UptimeKumaClient:
             print("DEBUG: Sending login event...")
             try:
                 # According to API docs, login event format is: {username, password, token?}
+                # Note: token is optional (for 2FA)
                 login_data = {
-                    'username': username,
+                    'username': username if username else '',  # Ensure it's a string, not None
                     'password': password
                 }
+                print(f"DEBUG: Login data: username='{login_data['username']}', password length={len(login_data['password'])}")
                 self.sio.emit('login', login_data)
                 print("DEBUG: Login event sent, waiting for response...")
+                # Give it a moment to process
+                time.sleep(0.2)
             except Exception as e:
                 print(f"✗ Error sending login event: {e}", file=sys.stderr)
                 import traceback
@@ -192,6 +211,8 @@ class UptimeKumaClient:
             timeout = 10
             start_time = time.time()
             disconnected = False
+            server_error = None
+            
             while (time.time() - start_time) < timeout:
                 if login_response_received:
                     break
@@ -200,11 +221,30 @@ class UptimeKumaClient:
                     disconnected = True
                     print("⚠ Connection lost during authentication", file=sys.stderr)
                     break
+                # Check for errors in queue
+                try:
+                    while not self.response_queue.empty():
+                        item = self.response_queue.get_nowait()
+                        if 'error' in item:
+                            server_error = item['error']
+                            print(f"✗ Server error: {server_error}", file=sys.stderr)
+                            break
+                except:
+                    pass
+                if server_error:
+                    break
                 time.sleep(0.1)
             
-            if disconnected:
-                print("✗ Connection disconnected during authentication", file=sys.stderr)
-                print("   This usually means the server rejected the login attempt", file=sys.stderr)
+            if disconnected or server_error:
+                if disconnected:
+                    print("✗ Connection disconnected during authentication", file=sys.stderr)
+                    print("   This usually means the server rejected the login attempt", file=sys.stderr)
+                if server_error:
+                    print(f"✗ Server reported error: {server_error}", file=sys.stderr)
+                print("   Please verify:", file=sys.stderr)
+                print("   1. Username and password are correct", file=sys.stderr)
+                print("   2. The account is not locked", file=sys.stderr)
+                print("   3. The account has proper permissions", file=sys.stderr)
                 return False
             
             # Remove the callback
