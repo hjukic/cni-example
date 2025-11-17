@@ -21,7 +21,7 @@ spec:
           - name: version-sync
             image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
             imagePullPolicy: {{ .Values.image.pullPolicy }}
-            command: ["sh", "-c", "pip install --no-cache-dir requests python-socketio websocket-client 2>&1 && python3 /app/update-uptime-kuma-version.py"]
+            command: ["sh", "-c", "pip install --no-cache-dir requests uptime-kuma-api 2>&1 && python3 /app/update-uptime-kuma-version.py"]
             volumeMounts:
             - name: script
               mountPath: /app

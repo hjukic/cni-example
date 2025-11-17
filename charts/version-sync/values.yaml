@@ -15,7 +15,7 @@ image:
 # Uptime Kuma configuration
 uptimeKuma:
   url: "http://uptime-kuma.uptime-kuma.svc.cluster.local:3001"
-  # Username/password authentication (required for Socket.io)
+  # Username/password authentication (required for Uptime Kuma API)
   usernameSecret:
     name: "uptime-kuma-credentials"
     key: "username"
