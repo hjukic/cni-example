@@ -534,6 +534,10 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         if not all_tags:
             all_tags = []
         
+        # Debug: print current state
+        print(f"   Debug: Current monitor tags: {current_tags}")
+        print(f"   Debug: All available tags: {all_tags}")
+        
         # Create a map of tag_id -> tag_info for easy lookup
         tag_map = {tag.get('id'): tag for tag in all_tags}
         
@@ -593,6 +597,9 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         monitor_data = monitor.copy()
         monitor_data['tags'] = filtered_tags
         
+        # Debug: print what we're sending
+        print(f"   Debug: Sending tags to API: {filtered_tags}")
+        
         success = client.edit_monitor(monitor_data)
         if success:
             # Wait a moment for the update to propagate
@@ -604,8 +611,28 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                 updated_monitor = updated_monitors.get(str(monitor_id))
                 if updated_monitor:
                     updated_tags = updated_monitor.get('tags', [])
-                    updated_tag_ids = [tag.get('tag_id') if isinstance(tag, dict) else tag for tag in updated_tags]
-                    updated_tag_names = [tag.get('name') if isinstance(tag, dict) else f'tag-{tag}' for tag in updated_tags]
+                    
+                    # Debug: print tag structure
+                    print(f"   Debug: Updated tags structure: {updated_tags}")
+                    
+                    # Try multiple ways to extract tag IDs and names
+                    updated_tag_ids = []
+                    updated_tag_names = []
+                    for tag in updated_tags:
+                        if isinstance(tag, dict):
+                            # Try both 'tag_id' and 'id' keys
+                            tag_id = tag.get('tag_id') or tag.get('id')
+                            if tag_id:
+                                updated_tag_ids.append(tag_id)
+                            if 'name' in tag:
+                                updated_tag_names.append(tag.get('name'))
+                        else:
+                            # If it's just an ID
+                            updated_tag_ids.append(tag)
+                    
+                    print(f"   Debug: Extracted tag IDs: {updated_tag_ids}")
+                    print(f"   Debug: Extracted tag names: {updated_tag_names}")
+                    print(f"   Debug: Looking for tag ID: {version_tag_id}, tag name: {version_tag_name}")
                     
                     if version_tag_id in updated_tag_ids or version_tag_name in updated_tag_names:
                         print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
