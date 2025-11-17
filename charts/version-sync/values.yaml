@@ -15,18 +15,12 @@ image:
 # Uptime Kuma configuration
 uptimeKuma:
   url: "http://uptime-kuma.uptime-kuma.svc.cluster.local:3001"
-  # Username/password authentication (required for Uptime Kuma API)
-  usernameSecret:
-    name: "uptime-kuma-credentials"
-    key: "username"
-  passwordSecret:
-    name: "uptime-kuma-credentials"
-    key: "password"
+  # API token authentication
+  secretName: "uptime-kuma-api-token"
   # 
   # Create the secret with:
-  # kubectl create secret generic uptime-kuma-credentials \
-  #   --from-literal=username='YOUR_UPTIME_KUMA_USERNAME' \
-  #   --from-literal=password='YOUR_UPTIME_KUMA_PASSWORD' \
+  # kubectl create secret generic uptime-kuma-api-token \
+  #   --from-literal=api-token='YOUR_API_TOKEN' \
   #   -n version-sync
 
 # Services configuration

@@ -15,12 +15,11 @@ A CronJob automatically syncs versions from `/static/version.txt` to Uptime Kuma
 
 ### Quick Setup
 
-**1. Create secret with credentials:**
+**1. Create secret with API token:**
 
 ```bash
-kubectl create secret generic uptime-kuma-credentials \
-  --from-literal=username='YOUR_USERNAME' \
-  --from-literal=password='YOUR_PASSWORD' \
+kubectl create secret generic uptime-kuma-api-token \
+  --from-literal=api-token='YOUR_API_TOKEN' \
   -n version-sync
 ```
 
@@ -32,12 +31,7 @@ schedule: "*/5 * * * *"
 
 uptimeKuma:
   url: "http://uptime-kuma.uptime-kuma.svc.cluster.local:3001"
-  usernameSecret:
-    name: "uptime-kuma-credentials"
-    key: "username"
-  passwordSecret:
-    name: "uptime-kuma-credentials"
-    key: "password"
+  secretName: "uptime-kuma-api-token"
 
 services:
   - monitorName: "webapp-color"
