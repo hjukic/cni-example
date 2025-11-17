@@ -96,9 +96,8 @@ class UptimeKumaClient:
         
         @self.sio.on('*')
         def catch_all(event, *args):
-            print(f"DEBUG: Received event '{event}' with {len(args)} args")
-            if event not in ['connect', 'disconnect', 'monitorList', 'tagList', 'heartbeat']:
-                print(f"DEBUG: Event '{event}' data: {args}")
+            # Silently handle events - only log if needed for debugging
+            pass
         
         # Generic response handler - will be used for callbacks
         # Note: We'll use specific callbacks for each operation instead of queue
@@ -106,35 +105,21 @@ class UptimeKumaClient:
         # Data event handlers (monitorList, tagList, etc.)
         @self.sio.on('monitorList')
         def on_monitor_list(data):
-            print(f"DEBUG: Received monitorList event")
-            print(f"DEBUG: Monitor data type: {type(data)}")
-            print(f"DEBUG: Monitor data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
-            if isinstance(data, dict):
-                print(f"DEBUG: Number of monitors: {len(data)}")
             with self.lock:
                 self.event_data['monitorList'] = data
-                print(f"DEBUG: Stored monitorList in event_data")
         
         @self.sio.on('tagList')
         def on_tag_list(data):
-            print(f"DEBUG: Received tagList event")
-            print(f"DEBUG: Tag data type: {type(data)}")
-            if isinstance(data, list):
-                print(f"DEBUG: Number of tags: {len(data)}")
             with self.lock:
                 self.event_data['tagList'] = data
-                print(f"DEBUG: Stored tagList in event_data")
         
         @self.sio.on('updateMonitorIntoList')
         def on_update_monitor(data):
-            print(f"DEBUG: Received updateMonitorIntoList event")
             if isinstance(data, dict):
-                for monitor_id, monitor_data in data.items():
-                    tags = monitor_data.get('tags', [])
-                    print(f"DEBUG: Monitor {monitor_id} now has {len(tags)} tag(s): {tags}")
-                    # Update cached monitor list
-                    with self.lock:
-                        if 'monitorList' in self.event_data:
+                # Update cached monitor list
+                with self.lock:
+                    if 'monitorList' in self.event_data:
+                        for monitor_id, monitor_data in data.items():
                             self.event_data['monitorList'][monitor_id] = monitor_data
     
     def connect(self) -> bool:
@@ -188,7 +173,6 @@ class UptimeKumaClient:
             # Callback function for Socket.io emit
             def login_callback(response):
                 nonlocal login_response_received, login_success, login_error
-                print(f"DEBUG: Received login callback: {response}")
                 login_response_received = True
                 if isinstance(response, dict):
                     if response.get('ok'):
@@ -206,8 +190,6 @@ class UptimeKumaClient:
             
             # Send login event with callback
             print(f"Attempting to authenticate as user: {username if username else '(empty)'}")
-            print(f"DEBUG: Password length: {len(password)} characters")
-            print("DEBUG: Sending login event with callback...")
             try:
                 # According to API docs, login event format is: {username, password, token?}
                 # Note: token is optional (for 2FA)
@@ -215,11 +197,9 @@ class UptimeKumaClient:
                     'username': username if username else '',  # Ensure it's a string, not None
                     'password': password
                 }
-                print(f"DEBUG: Login data: username='{login_data['username']}', password length={len(login_data['password'])}")
                 
                 # Use callback parameter instead of waiting for 'res' event
                 self.sio.emit('login', login_data, callback=login_callback)
-                print("DEBUG: Login event sent with callback, waiting for response...")
                 
                 # Give it a moment to process
                 time.sleep(0.2)
@@ -282,10 +262,7 @@ class UptimeKumaClient:
                 print("✓ Authenticated successfully")
                 
                 # Wait a moment to see if server sends any automatic data
-                print("DEBUG: Waiting briefly for any automatic data from server...")
                 time.sleep(1.0)
-                with self.lock:
-                    print(f"DEBUG: Available event_data keys after auth: {list(self.event_data.keys())}")
                 
                 return True
             else:
@@ -305,37 +282,23 @@ class UptimeKumaClient:
             return None
         
         try:
-            print("DEBUG: get_monitors() called")
-            
             # Check if we already have the monitor list (sent automatically after auth)
             with self.lock:
                 if 'monitorList' in self.event_data:
-                    print("DEBUG: Monitor list already available from earlier event")
-                    print(f"DEBUG: Using cached monitorList with {len(self.event_data['monitorList'])} monitors")
                     return self.event_data['monitorList']
             
             # If not, request it
-            print("DEBUG: Monitor list not available, requesting from server...")
-            
-            # Request monitor list
-            print("DEBUG: Emitting 'monitorList' event to request monitors")
             self.sio.emit('monitorList')
-            print("DEBUG: 'monitorList' event emitted, waiting for response...")
             
             # Wait for response
             timeout = 5
             start_time = time.time()
-            check_count = 0
             while (time.time() - start_time) < timeout:
-                check_count += 1
                 with self.lock:
                     if 'monitorList' in self.event_data:
-                        print(f"DEBUG: Received monitorList after {check_count} checks ({time.time() - start_time:.2f}s)")
                         return self.event_data['monitorList']
                 time.sleep(0.1)
             
-            print(f"DEBUG: Timeout after {check_count} checks ({timeout}s)", file=sys.stderr)
-            print(f"DEBUG: Connected: {self.connected}, Authenticated: {self.authenticated}", file=sys.stderr)
             print("✗ Timeout waiting for monitor list", file=sys.stderr)
             return None
         except Exception as e:
@@ -349,32 +312,22 @@ class UptimeKumaClient:
             return None
         
         try:
-            print("DEBUG: get_tags() called")
-            
             # Check if we already have the tag list (sent automatically after auth)
             with self.lock:
                 if 'tagList' in self.event_data:
-                    print("DEBUG: Tag list already available from earlier event")
                     tag_list = self.event_data['tagList']
-                    tag_count = len(tag_list) if isinstance(tag_list, list) else 'N/A'
-                    print(f"DEBUG: Using cached tagList with {tag_count} tags")
                     # Ensure we return a list, not None
                     return tag_list if isinstance(tag_list, list) else []
             
             # If not, request it using callback pattern
-            print("DEBUG: Tag list not available, requesting from server...")
-            
-            # Set up response tracking
             response_received = False
             response_data = None
             
             def tag_list_callback(response):
                 nonlocal response_received, response_data
-                print(f"DEBUG: tagList callback received: {response}")
                 response_received = True
                 if isinstance(response, list):
                     response_data = response
-                    print(f"DEBUG: Received {len(response)} tags via callback")
                 elif isinstance(response, dict):
                     # Some APIs return tags in a dict format
                     if 'tags' in response:
@@ -383,14 +336,11 @@ class UptimeKumaClient:
                         # Success but no tags yet - return empty list
                         response_data = []
                     else:
-                        print(f"DEBUG: Unexpected dict response: {response}")
                         response_data = []
                 else:
-                    print(f"DEBUG: Unexpected response type: {type(response)}, returning empty list")
                     response_data = []
             
             # Request tag list with callback
-            print("DEBUG: Emitting 'tagList' event with callback...")
             self.sio.emit('tagList', callback=tag_list_callback)
             
             # Wait for response
@@ -402,10 +352,8 @@ class UptimeKumaClient:
                 time.sleep(0.1)
             
             if not response_received:
-                print("DEBUG: Timeout waiting for tagList callback - assuming no tags exist yet", file=sys.stderr)
                 # If timeout, assume no tags exist yet and return empty list
                 # This allows the script to proceed and create the first tag
-                print("DEBUG: Returning empty list (no tags exist yet)")
                 return []
             
             # Also check if tagList event was received (some servers send both)
@@ -413,13 +361,11 @@ class UptimeKumaClient:
                 if 'tagList' in self.event_data:
                     cached_list = self.event_data['tagList']
                     if isinstance(cached_list, list):
-                        print(f"DEBUG: Also found tagList in event_data with {len(cached_list)} tags")
                         # Use the cached version if it's more complete
                         if len(cached_list) > len(response_data if response_data else []):
                             return cached_list
             
             result = response_data if response_data is not None else []
-            print(f"DEBUG: Returning {len(result)} tags")
             return result
         except Exception as e:
             print(f"✗ Error getting tags: {e}", file=sys.stderr)
@@ -435,7 +381,6 @@ class UptimeKumaClient:
             return None
         
         try:
-            print(f"DEBUG: add_tag() called for tag '{name}'")
             # Set up response tracking
             response_received = False
             response_data = None
@@ -443,21 +388,16 @@ class UptimeKumaClient:
             
             def tag_callback(response):
                 nonlocal response_received, response_data, response_error
-                print(f"DEBUG: add_tag callback received: {response}")
                 response_received = True
                 if isinstance(response, dict):
                     if response.get('ok'):
                         response_data = response.get('tag')
-                        print(f"DEBUG: Tag created successfully with ID: {response_data.get('id') if response_data else 'N/A'}")
                     else:
                         response_error = response.get('msg', 'Failed to create tag')
-                        print(f"DEBUG: Tag creation failed: {response_error}")
                 else:
                     response_error = f"Unexpected response type: {type(response)}"
-                    print(f"DEBUG: Unexpected response type: {type(response)}")
             
             # Send addTag event with callback
-            print(f"DEBUG: Emitting 'addTag' event for tag '{name}'")
             self.sio.emit('addTag', {
                 'name': name,
                 'color': color
@@ -472,7 +412,6 @@ class UptimeKumaClient:
                 time.sleep(0.1)
             
             if not response_received:
-                print(f"DEBUG: Timeout waiting for addTag response after {timeout}s", file=sys.stderr)
                 print("✗ Timeout creating tag", file=sys.stderr)
                 return None
             
@@ -480,7 +419,6 @@ class UptimeKumaClient:
                 print(f"✗ Error creating tag: {response_error}", file=sys.stderr)
                 return None
             
-            print(f"DEBUG: Returning tag data: {response_data}")
             return response_data
         except Exception as e:
             print(f"✗ Error creating tag: {e}", file=sys.stderr)
@@ -493,11 +431,6 @@ class UptimeKumaClient:
             return False
         
         try:
-            monitor_id = monitor_data.get('id', 'unknown')
-            monitor_name = monitor_data.get('name', 'unknown')
-            print(f"DEBUG: edit_monitor() called for monitor ID {monitor_id} ('{monitor_name}')")
-            print(f"DEBUG: Monitor tags to set: {monitor_data.get('tags', [])}")
-            
             # Set up response tracking
             response_received = False
             response_success = False
@@ -505,21 +438,16 @@ class UptimeKumaClient:
             
             def edit_callback(response):
                 nonlocal response_received, response_success, response_error
-                print(f"DEBUG: edit_monitor callback received: {response}")
                 response_received = True
                 if isinstance(response, dict):
                     if response.get('ok'):
                         response_success = True
-                        print(f"DEBUG: Monitor updated successfully")
                     else:
                         response_error = response.get('msg', 'Failed to update monitor')
-                        print(f"DEBUG: Monitor update failed: {response_error}")
                 else:
                     response_error = f"Unexpected response type: {type(response)}"
-                    print(f"DEBUG: Unexpected response type: {type(response)}")
             
             # Send editMonitor event with callback
-            print(f"DEBUG: Emitting 'editMonitor' event for monitor ID {monitor_id}")
             self.sio.emit('editMonitor', monitor_data, callback=edit_callback)
             
             # Wait for response
@@ -531,7 +459,6 @@ class UptimeKumaClient:
                 time.sleep(0.1)
             
             if not response_received:
-                print(f"DEBUG: Timeout waiting for editMonitor response after {timeout}s", file=sys.stderr)
                 print("✗ Timeout updating monitor", file=sys.stderr)
                 return False
             
@@ -539,7 +466,6 @@ class UptimeKumaClient:
                 print(f"✗ Error updating monitor: {response_error}", file=sys.stderr)
                 return False
             
-            print(f"DEBUG: Returning success: {response_success}")
             return response_success
         except Exception as e:
             print(f"✗ Error updating monitor: {e}", file=sys.stderr)
@@ -554,34 +480,26 @@ class UptimeKumaClient:
 def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = '#3b82f6') -> Optional[int]:
     """Get or create a tag and return its ID."""
     try:
-        print(f"DEBUG: get_or_create_tag() called for tag '{tag_name}'")
         # Get all tags
         tags = client.get_tags()
         if tags is None:
-            print(f"DEBUG: get_tags() returned None")
             return None
-        
-        print(f"DEBUG: Retrieved {len(tags) if isinstance(tags, list) else 'unknown'} tags")
         
         # Check if tag exists
         for tag in tags:
-            tag_name_in_list = tag.get('name', '')
-            print(f"DEBUG: Checking tag: '{tag_name_in_list}' (ID: {tag.get('id')})")
-            if tag_name_in_list == tag_name:
+            if tag.get('name', '') == tag_name:
                 tag_id = tag.get('id')
-                print(f"✓ Found existing tag '{tag_name}' with ID: {tag_id}")
+                print(f"✓ Found existing tag '{tag_name}'")
                 return tag_id
         
         # Create new tag
-        print(f"DEBUG: Tag '{tag_name}' not found, creating new tag...")
         print(f"Creating new tag '{tag_name}'...")
         new_tag = client.add_tag(name=tag_name, color=tag_color)
         if new_tag:
             tag_id = new_tag.get('id')
-            print(f"✓ Created tag '{tag_name}' with ID: {tag_id}")
+            print(f"✓ Created tag '{tag_name}'")
             return tag_id
         
-        print(f"DEBUG: add_tag() returned None")
         return None
     except Exception as e:
         print(f"✗ Error managing tags: {e}", file=sys.stderr)
@@ -591,68 +509,45 @@ def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = 
 def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version') -> bool:
     """Update monitor with version tag."""
     try:
-        print(f"DEBUG: update_monitor_tags() called for monitor '{monitor_name}' (ID: {monitor_id}), version: {version}")
-        
         # Get monitor list to find the monitor
-        print(f"DEBUG: Getting monitor list to retrieve monitor details...")
         monitors = client.get_monitors()
         if monitors is None:
-            print(f"DEBUG: get_monitors() returned None in update_monitor_tags")
             return False
         
         monitor = monitors.get(str(monitor_id))
         if not monitor:
-            print(f"DEBUG: Monitor ID {monitor_id} not found in monitor list", file=sys.stderr)
             print(f"✗ Monitor ID {monitor_id} not found", file=sys.stderr)
             return False
         
-        print(f"DEBUG: Found monitor details")
-        
         # Get or create version tag
         version_tag_name = f'{tag_prefix}-{version}'
-        print(f"DEBUG: Looking for/creating tag '{version_tag_name}'...")
         version_tag_id = get_or_create_tag(client, version_tag_name)
         if not version_tag_id:
-            print(f"DEBUG: Failed to get or create tag '{version_tag_name}'")
             return False
         
-        print(f"DEBUG: Using tag ID {version_tag_id} for '{version_tag_name}'")
-        
         # Wait a moment after creating tag to ensure it's fully available
-        # (in case tag was just created, give server time to process it)
         time.sleep(0.5)
         
-        # Get current tags
+        # Get current tags and all tags
         current_tags = monitor.get('tags', [])
-        print(f"DEBUG: Monitor current tags: {current_tags}")
-        
-        # Get all tags to build proper tag objects
-        print(f"DEBUG: Fetching all tags to build tag objects...")
         all_tags = client.get_tags()
         if not all_tags:
-            print(f"DEBUG: Warning: Could not fetch tag list")
             all_tags = []
         
         # Create a map of tag_id -> tag_info for easy lookup
         tag_map = {tag.get('id'): tag for tag in all_tags}
         
         # Filter out old version tags (tags starting with tag_prefix)
-        # Keep tags as objects, not just IDs
         filtered_tags = []
         for tag in current_tags:
             if isinstance(tag, dict):
-                tag_id = tag.get('tag_id')
                 tag_name = tag.get('name', '')
                 # Keep tags that don't start with the version prefix
                 if tag_name and not tag_name.startswith(f'{tag_prefix}-'):
                     filtered_tags.append(tag)
-                    print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
-                else:
-                    print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
             else:
                 # Fallback: if tag is just an ID, convert to object
                 tag_id = tag
-                print(f"DEBUG: Tag is just ID {tag_id}, converting to object...")
                 if tag_id in tag_map:
                     tag_info = tag_map[tag_id]
                     tag_name = tag_info.get('name', '')
@@ -665,12 +560,8 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                             'value': ''
                         }
                         filtered_tags.append(tag_obj)
-                        print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
-                    else:
-                        print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
                 else:
                     # If we can't find the tag, keep it as a safety measure
-                    print(f"DEBUG: Tag ID {tag_id} not found in tag list, keeping it")
                     tag_obj = {
                         'tag_id': tag_id,
                         'name': f'tag-{tag_id}',
@@ -697,22 +588,17 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                 'value': ''
             }
         filtered_tags.append(version_tag_obj)
-        print(f"DEBUG: Final tags to set: {filtered_tags}")
         
         # Update monitor with new tags
-        # Uptime Kuma expects tags as an array of tag objects
         monitor_data = monitor.copy()
         monitor_data['tags'] = filtered_tags
-        print(f"DEBUG: Monitor data tags field type: {type(monitor_data['tags'])}, length: {len(monitor_data['tags'])}")
         
-        print(f"DEBUG: Calling edit_monitor to update tags...")
         success = client.edit_monitor(monitor_data)
         if success:
             # Wait a moment for the update to propagate
             time.sleep(1.0)
             
-            # Verify the update by checking the monitor again
-            print(f"DEBUG: Verifying monitor update...")
+            # Verify the update
             updated_monitors = client.get_monitors()
             if updated_monitors:
                 updated_monitor = updated_monitors.get(str(monitor_id))
@@ -720,24 +606,11 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                     updated_tags = updated_monitor.get('tags', [])
                     updated_tag_ids = [tag.get('tag_id') if isinstance(tag, dict) else tag for tag in updated_tags]
                     updated_tag_names = [tag.get('name') if isinstance(tag, dict) else f'tag-{tag}' for tag in updated_tags]
-                    print(f"DEBUG: Monitor now has {len(updated_tag_ids)} tag(s)")
-                    print(f"DEBUG: Tag IDs: {updated_tag_ids}")
-                    print(f"DEBUG: Tag names: {updated_tag_names}")
                     
                     if version_tag_id in updated_tag_ids or version_tag_name in updated_tag_names:
                         print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
                     else:
-                        print(f"⚠ Warning: Tag {version_tag_id} ('{version_tag_name}') not found in monitor tags after update", file=sys.stderr)
-                        print(f"   Monitor tag IDs: {updated_tag_ids}", file=sys.stderr)
-                        print(f"   Monitor tag names: {updated_tag_names}", file=sys.stderr)
-                        print(f"   Expected tag ID: {version_tag_id}, name: '{version_tag_name}'", file=sys.stderr)
-                        # Still return success since the update call succeeded
-                else:
-                    print(f"DEBUG: Could not find monitor {monitor_id} after update for verification")
-            else:
-                print(f"DEBUG: Could not retrieve monitors for verification")
-        else:
-            print(f"DEBUG: edit_monitor returned False")
+                        print(f"⚠ Warning: Tag '{version_tag_name}' not found in monitor tags after update", file=sys.stderr)
         
         return success
     except Exception as e:
@@ -759,45 +632,32 @@ def process_service(client: UptimeKumaClient, service_config: Dict[str, str]) ->
     print(f"   Endpoint: {version_endpoint}")
     
     # Fetch version
-    print(f"DEBUG: Fetching version from endpoint...")
     version = get_version(version_endpoint)
     if not version:
-        print(f"DEBUG: Failed to fetch version, returning False")
         return False
     
     print(f"   ✓ Fetched version: {version}")
     
     # Get monitor list and find monitor by name
-    print(f"DEBUG: Requesting monitor list...")
     monitors = client.get_monitors()
     if monitors is None:
-        print(f"DEBUG: get_monitors() returned None, marking service as failed")
         print(f"   ✗ Failed to retrieve monitor list from Uptime Kuma")
         return False
     
-    print(f"DEBUG: Successfully retrieved {len(monitors)} monitors")
-    print(f"DEBUG: Looking for monitor named '{monitor_name}'...")
-    
     monitor_id = None
     for mid, monitor in monitors.items():
-        monitor_name_in_list = monitor.get('name', '')
-        print(f"DEBUG: Checking monitor ID {mid}: '{monitor_name_in_list}'")
-        if monitor_name_in_list == monitor_name:
+        if monitor.get('name', '') == monitor_name:
             monitor_id = int(mid)
-            print(f"DEBUG: Match found! Monitor ID: {monitor_id}")
             break
     
     if not monitor_id:
-        print(f"DEBUG: Monitor '{monitor_name}' not found in list")
-        print(f"✗ Monitor '{monitor_name}' not found", file=sys.stderr)
+        print(f"   ✗ Monitor '{monitor_name}' not found", file=sys.stderr)
         return False
     
-    print(f"   ✓ Found monitor ID: {monitor_id}")
+    print(f"   ✓ Found monitor")
     
     # Update tags
-    print(f"DEBUG: Updating monitor tags...")
     success = update_monitor_tags(client, monitor_id, monitor_name, version, tag_prefix)
-    print(f"DEBUG: update_monitor_tags returned: {success}")
     return success
 
 
