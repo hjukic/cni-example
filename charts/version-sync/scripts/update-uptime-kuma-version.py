@@ -305,7 +305,7 @@ class UptimeKumaClient:
             print(f"✗ Error getting monitors: {e}", file=sys.stderr)
             return None
     
-    def get_tags(self) -> Optional[List[Dict[str, Any]]]:
+    def get_tags(self, force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
         """Get list of tags."""
         if not self.authenticated:
             print("✗ Not authenticated", file=sys.stderr)
@@ -313,11 +313,13 @@ class UptimeKumaClient:
         
         try:
             # Check if we already have the tag list (sent automatically after auth)
-            with self.lock:
-                if 'tagList' in self.event_data:
-                    tag_list = self.event_data['tagList']
-                    # Ensure we return a list, not None
-                    return tag_list if isinstance(tag_list, list) else []
+            # Skip cache if force_refresh is True
+            if not force_refresh:
+                with self.lock:
+                    if 'tagList' in self.event_data:
+                        tag_list = self.event_data['tagList']
+                        # Ensure we return a list, not None
+                        return tag_list if isinstance(tag_list, list) else []
             
             # If not, request it using callback pattern
             response_received = False
@@ -435,10 +437,12 @@ class UptimeKumaClient:
             response_received = False
             response_success = False
             response_error = None
+            full_response = None
             
             def edit_callback(response):
-                nonlocal response_received, response_success, response_error
+                nonlocal response_received, response_success, response_error, full_response
                 response_received = True
+                full_response = response
                 if isinstance(response, dict):
                     if response.get('ok'):
                         response_success = True
@@ -461,6 +465,9 @@ class UptimeKumaClient:
             if not response_received:
                 print("✗ Timeout updating monitor", file=sys.stderr)
                 return False
+            
+            # Debug: print full response
+            print(f"   Debug: editMonitor API response: {full_response}")
             
             if response_error:
                 print(f"✗ Error updating monitor: {response_error}", file=sys.stderr)
@@ -498,6 +505,12 @@ def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = 
         if new_tag:
             tag_id = new_tag.get('id')
             print(f"✓ Created tag '{tag_name}'")
+            
+            # Force refresh the tag list to ensure it's in the cache
+            # Wait a bit for the tag to be fully created on the server
+            time.sleep(0.5)
+            client.get_tags(force_refresh=True)
+            
             return tag_id
         
         return None
@@ -519,6 +532,9 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
             print(f"✗ Monitor ID {monitor_id} not found", file=sys.stderr)
             return False
         
+        # Debug: print original monitor structure
+        print(f"   Debug: Original monitor object: {json.dumps(monitor, indent=2, default=str)}")
+        
         # Get or create version tag
         version_tag_name = f'{tag_prefix}-{version}'
         version_tag_id = get_or_create_tag(client, version_tag_name)
@@ -528,9 +544,9 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         # Wait a moment after creating tag to ensure it's fully available
         time.sleep(0.5)
         
-        # Get current tags and all tags
+        # Get current tags and all tags (force refresh to get latest)
         current_tags = monitor.get('tags', [])
-        all_tags = client.get_tags()
+        all_tags = client.get_tags(force_refresh=True)
         if not all_tags:
             all_tags = []
         
@@ -599,6 +615,10 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         
         # Debug: print what we're sending
         print(f"   Debug: Sending tags to API: {filtered_tags}")
+        print(f"   Debug: Monitor ID: {monitor_data.get('id')}")
+        print(f"   Debug: Monitor name: {monitor_data.get('name')}")
+        print(f"   Debug: Monitor type: {monitor_data.get('type')}")
+        print(f"   Debug: Full monitor data keys: {list(monitor_data.keys())}")
         
         success = client.edit_monitor(monitor_data)
         if success:
