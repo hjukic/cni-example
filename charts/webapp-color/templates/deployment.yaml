@@ -27,8 +27,7 @@ spec:
               value: {{ .Values.appColor | quote }}
           volumeMounts:
             - name: version-config
-              mountPath: /app/version.txt
-              subPath: version.txt
+              mountPath: /opt/static
               readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
