@@ -124,6 +124,18 @@ class UptimeKumaClient:
             with self.lock:
                 self.event_data['tagList'] = data
                 print(f"DEBUG: Stored tagList in event_data")
+        
+        @self.sio.on('updateMonitorIntoList')
+        def on_update_monitor(data):
+            print(f"DEBUG: Received updateMonitorIntoList event")
+            if isinstance(data, dict):
+                for monitor_id, monitor_data in data.items():
+                    tags = monitor_data.get('tags', [])
+                    print(f"DEBUG: Monitor {monitor_id} now has {len(tags)} tag(s): {tags}")
+                    # Update cached monitor list
+                    with self.lock:
+                        if 'monitorList' in self.event_data:
+                            self.event_data['monitorList'][monitor_id] = monitor_data
     
     def connect(self) -> bool:
         """Connect to Uptime Kuma Socket.io server."""
@@ -606,6 +618,10 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         
         print(f"DEBUG: Using tag ID {version_tag_id} for '{version_tag_name}'")
         
+        # Wait a moment after creating tag to ensure it's fully available
+        # (in case tag was just created, give server time to process it)
+        time.sleep(0.5)
+        
         # Get current tags
         current_tags = monitor.get('tags', [])
         print(f"DEBUG: Monitor current tags: {current_tags}")
@@ -646,18 +662,43 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                     print(f"DEBUG: Could not fetch tag list, keeping tag ID {tag_id} to preserve it")
                     filtered_tag_ids.append(tag_id)
         
-        # Add new version tag
+        # Add new version tag ID
         filtered_tag_ids.append(version_tag_id)
         print(f"DEBUG: Final tag IDs to set: {filtered_tag_ids}")
         
         # Update monitor with new tags
+        # Uptime Kuma expects tags as an array of tag IDs (integers)
         monitor_data = monitor.copy()
         monitor_data['tags'] = filtered_tag_ids
+        print(f"DEBUG: Monitor data tags field type: {type(monitor_data['tags'])}, value: {monitor_data['tags']}")
         
         print(f"DEBUG: Calling edit_monitor to update tags...")
         success = client.edit_monitor(monitor_data)
         if success:
-            print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
+            # Wait a moment for the update to propagate
+            time.sleep(1.0)
+            
+            # Verify the update by checking the monitor again
+            print(f"DEBUG: Verifying monitor update...")
+            updated_monitors = client.get_monitors()
+            if updated_monitors:
+                updated_monitor = updated_monitors.get(str(monitor_id))
+                if updated_monitor:
+                    updated_tags = updated_monitor.get('tags', [])
+                    updated_tag_ids = [tag.get('tag_id') if isinstance(tag, dict) else tag for tag in updated_tags]
+                    print(f"DEBUG: Monitor now has {len(updated_tag_ids)} tag(s): {updated_tag_ids}")
+                    
+                    if version_tag_id in updated_tag_ids:
+                        print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
+                    else:
+                        print(f"⚠ Warning: Tag {version_tag_id} ('{version_tag_name}') not found in monitor tags after update", file=sys.stderr)
+                        print(f"   Monitor tags: {updated_tag_ids}", file=sys.stderr)
+                        print(f"   Expected tag ID: {version_tag_id}", file=sys.stderr)
+                        # Still return success since the update call succeeded
+                else:
+                    print(f"DEBUG: Could not find monitor {monitor_id} after update for verification")
+            else:
+                print(f"DEBUG: Could not retrieve monitors for verification")
         else:
             print(f"DEBUG: edit_monitor returned False")
         
