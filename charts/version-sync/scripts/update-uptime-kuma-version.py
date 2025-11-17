@@ -5,21 +5,21 @@ Script to dynamically update Uptime Kuma monitor tags with version from version.
 This script uses the official uptime-kuma-api library to communicate with Uptime Kuma.
 See: https://uptime-kuma-api.readthedocs.io/en/latest/
 
-This script:
-1. Fetches versions from multiple service endpoints
-2. Connects to Uptime Kuma via the official API
-3. Updates Uptime Kuma monitors with version tags using add_monitor_tag
-4. Can be run as a CronJob in Kubernetes
-5. Requires SERVICES_CONFIG environment variable with JSON array of services
+Usage:
+  - Fetches versions from service endpoints
+  - Creates/updates version tags in Uptime Kuma
+  - Automatically removes old version tags
+  - Can be run as a CronJob in Kubernetes
 """
 
 import os
 import sys
-import requests
 import json
 import time
+import traceback
+import requests
 from typing import Optional, List, Dict, Any
-from uptime_kuma_api import UptimeKumaApi, MonitorType
+from uptime_kuma_api import UptimeKumaApi
 
 # Configuration from environment variables
 UPTIME_KUMA_URL = os.getenv('UPTIME_KUMA_URL', 'http://uptime-kuma.uptime-kuma.svc.cluster.local:3001')
@@ -45,156 +45,85 @@ def get_version(version_endpoint: str) -> Optional[str]:
 
 
 def connect_to_uptime_kuma(url: str, username: str, password: str) -> Optional[UptimeKumaApi]:
-    """Connect and authenticate with Uptime Kuma using the official API."""
+    """Connect and authenticate with Uptime Kuma."""
     try:
         print(f"Connecting to Uptime Kuma at {url}...")
         api = UptimeKumaApi(url)
-        
-        # Login
-        if username:
-            print(f"Authenticating as user: {username}")
-            api.login(username, password)
-        else:
-            print("Authenticating with password only...")
-            api.login('', password)
-        
+        api.login(username, password)
         print("✓ Connected and authenticated successfully")
         return api
     except Exception as e:
-        print(f"✗ Error connecting to Uptime Kuma: {e}", file=sys.stderr)
-        import traceback
+        print(f"✗ Error connecting: {e}", file=sys.stderr)
         traceback.print_exc()
         return None
 
 
 def get_or_create_tag(api: UptimeKumaApi, tag_name: str, tag_color: str = '#3b82f6') -> Optional[Dict[str, Any]]:
-    """Get or create a tag and return the full tag object."""
+    """Get existing tag or create a new one."""
     try:
-        # Get all tags
-        tags = api.get_tags()
-        
         # Check if tag exists
-        for tag in tags:
-            if tag.get('name', '') == tag_name:
-                print(f"✓ Found existing tag '{tag_name}' (ID: {tag.get('id')})")
+        for tag in api.get_tags():
+            if tag['name'] == tag_name:
+                print(f"✓ Found existing tag '{tag_name}' (ID: {tag['id']})")
                 return tag
         
         # Create new tag
         print(f"Creating new tag '{tag_name}'...")
         new_tag = api.add_tag(name=tag_name, color=tag_color)
-        print(f"✓ Created tag '{tag_name}' (ID: {new_tag.get('id')})")
-        
-        # Wait a moment for the tag to propagate
-        time.sleep(0.5)
-        
+        print(f"✓ Created tag '{tag_name}' (ID: {new_tag['id']})")
         return new_tag
     except Exception as e:
         print(f"✗ Error managing tags: {e}", file=sys.stderr)
-        import traceback
         traceback.print_exc()
         return None
 
 
+def _extract_tag_id(tag: Any) -> Optional[int]:
+    """Extract tag ID from various tag formats."""
+    if isinstance(tag, dict):
+        return tag.get('tag_id') or tag.get('id')
+    return tag
+
+
 def update_monitor_tags(api: UptimeKumaApi, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version') -> bool:
-    """Update monitor with version tag using the official API's add_monitor_tag method."""
+    """Update monitor with version tag."""
     try:
-        # Get monitor details
+        # Get monitor and create/find version tag
         monitor = api.get_monitor(monitor_id)
-        if not monitor:
-            print(f"✗ Monitor ID {monitor_id} not found", file=sys.stderr)
-            return False
-        
-        # Get or create version tag
         version_tag_name = f'{tag_prefix}-{version}'
-        version_tag_obj = get_or_create_tag(api, version_tag_name)
-        if not version_tag_obj:
+        version_tag = get_or_create_tag(api, version_tag_name)
+        
+        if not version_tag:
             return False
         
-        version_tag_id = version_tag_obj.get('id')
-        if not version_tag_id:
-            print(f"✗ Error: Created tag has no ID", file=sys.stderr)
-            return False
+        version_tag_id = version_tag['id']
+        print(f"   Using tag ID: {version_tag_id}")
         
-        print(f"   Using tag ID: {version_tag_id} for tag '{version_tag_name}'")
-        
-        # Get current tags
-        current_tags = monitor.get('tags', [])
-        print(f"   Current monitor tags: {[tag.get('name', tag.get('tag_id', tag)) for tag in current_tags]}")
-        
-        # Get all available tags to map IDs to names
-        all_tags = api.get_tags()
-        tag_map = {tag['id']: tag for tag in all_tags}
+        # Build tag map for name lookups
+        tag_map = {tag['id']: tag['name'] for tag in api.get_tags()}
         
         # Find and remove old version tags
-        tags_to_remove = []
+        current_tags = monitor.get('tags', [])
         for tag in current_tags:
-            if isinstance(tag, dict):
-                tag_id = tag.get('tag_id') or tag.get('id')
-                tag_name = tag.get('name', '')
-                if not tag_name and tag_id in tag_map:
-                    tag_name = tag_map[tag_id].get('name', '')
-            else:
-                # Tag is just an ID
-                tag_id = tag
-                tag_name = tag_map.get(tag_id, {}).get('name', '')
+            tag_id = _extract_tag_id(tag)
+            tag_name = tag.get('name') if isinstance(tag, dict) else tag_map.get(tag_id, '')
             
-            # If this is a version tag (starts with tag_prefix), mark for removal
-            if tag_name and tag_name.startswith(f'{tag_prefix}-'):
-                if tag_id != version_tag_id:  # Don't remove the tag we're about to add
-                    tags_to_remove.append((tag_id, tag_name))
+            # Remove old version tags (but not the one we're adding)
+            if tag_name.startswith(f'{tag_prefix}-') and tag_id != version_tag_id:
+                print(f"   Removing old tag '{tag_name}'...")
+                try:
+                    api.delete_monitor_tag(tag_id=tag_id, monitor_id=monitor_id)
+                except Exception as e:
+                    print(f"   ⚠ Warning: Could not remove old tag: {e}")
         
-        # Remove old version tags
-        for tag_id, tag_name in tags_to_remove:
-            print(f"   Removing old tag '{tag_name}' (ID: {tag_id})...")
-            try:
-                api.delete_monitor_tag(tag_id=tag_id, monitor_id=monitor_id)
-                print(f"   ✓ Removed old tag '{tag_name}'")
-                time.sleep(0.2)  # Small delay between operations
-            except Exception as e:
-                print(f"   ⚠ Warning: Could not remove old tag: {e}")
-        
-        # Add the new version tag using the official add_monitor_tag method
-        print(f"   Adding tag '{version_tag_name}' to monitor...")
-        try:
-            # This is the key method that should properly apply the tag to the monitor
-            api.add_monitor_tag(
-                tag_id=version_tag_id,
-                monitor_id=monitor_id,
-                value=''  # Empty value for simple tags
-            )
-            print(f"✓ Successfully added tag '{version_tag_name}' to monitor '{monitor_name}'")
-            
-            # Wait a moment for the change to propagate
-            time.sleep(0.5)
-            
-            # Verify the tag was added
-            updated_monitor = api.get_monitor(monitor_id)
-            updated_tags = updated_monitor.get('tags', [])
-            
-            # Check if our tag is present
-            tag_found = False
-            for tag in updated_tags:
-                if isinstance(tag, dict):
-                    tag_id = tag.get('tag_id') or tag.get('id')
-                    if tag_id == version_tag_id:
-                        tag_found = True
-                        break
-            
-            if tag_found:
-                print(f"   ✓ Verified: Tag is now attached to the monitor")
-            else:
-                print(f"   ⚠ Warning: Tag added but not immediately visible in monitor (may need time to propagate)")
-            
-            return True
-        except Exception as e:
-            print(f"✗ Failed to add tag to monitor: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
-            return False
+        # Add the new version tag
+        print(f"   Adding tag '{version_tag_name}'...")
+        api.add_monitor_tag(tag_id=version_tag_id, monitor_id=monitor_id, value='')
+        print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
+        return True
         
     except Exception as e:
         print(f"✗ Error updating monitor '{monitor_name}': {e}", file=sys.stderr)
-        import traceback
         traceback.print_exc()
         return False
 
@@ -210,62 +139,47 @@ def process_service(api: UptimeKumaApi, service_config: Dict[str, str]) -> bool:
         return False
     
     print(f"\n📦 Processing service: {monitor_name}")
-    print(f"   Endpoint: {version_endpoint}")
     
-    # Fetch version
+    # Fetch version from endpoint
     version = get_version(version_endpoint)
     if not version:
         return False
-    
     print(f"   ✓ Fetched version: {version}")
     
-    # Get monitor list and find monitor by name
-    monitors = api.get_monitors()
-    
-    monitor_id = None
-    for monitor in monitors:
-        if monitor.get('name', '') == monitor_name:
-            monitor_id = monitor.get('id')
-            break
-    
-    if not monitor_id:
+    # Find monitor by name
+    monitor = next((m for m in api.get_monitors() if m['name'] == monitor_name), None)
+    if not monitor:
         print(f"   ✗ Monitor '{monitor_name}' not found", file=sys.stderr)
         return False
     
-    print(f"   ✓ Found monitor (ID: {monitor_id})")
-    
-    # Update tags
-    success = update_monitor_tags(api, monitor_id, monitor_name, version, tag_prefix)
-    return success
+    # Update monitor with version tag
+    return update_monitor_tags(api, monitor['id'], monitor_name, version, tag_prefix)
 
 
 def parse_services_config() -> List[Dict[str, str]]:
-    """Parse services configuration from JSON string."""
+    """Parse services configuration from JSON environment variable."""
     if not SERVICES_CONFIG:
         print("✗ Error: SERVICES_CONFIG environment variable is required", file=sys.stderr)
         return []
     
     try:
         services = json.loads(SERVICES_CONFIG)
-        if not isinstance(services, list):
-            print("✗ Error: SERVICES_CONFIG must be a JSON array", file=sys.stderr)
+        if not isinstance(services, list) or not services:
+            print("✗ Error: SERVICES_CONFIG must be a non-empty JSON array", file=sys.stderr)
             return []
         
-        if len(services) == 0:
-            print("✗ Error: SERVICES_CONFIG must contain at least one service", file=sys.stderr)
-            return []
-        
-        print(f"✓ Loaded {len(services)} service(s) from SERVICES_CONFIG")
+        print(f"✓ Loaded {len(services)} service(s) from configuration")
         return services
     except json.JSONDecodeError as e:
-        print(f"✗ Error parsing SERVICES_CONFIG JSON: {e}", file=sys.stderr)
+        print(f"✗ Error parsing SERVICES_CONFIG: {e}", file=sys.stderr)
         return []
 
 
 def main():
     """Main execution."""
-    # Check authentication credentials
-    if not UPTIME_KUMA_API_TOKEN and not UPTIME_KUMA_PASSWORD:
+    # Validate credentials
+    password = UPTIME_KUMA_API_TOKEN or UPTIME_KUMA_PASSWORD
+    if not password:
         print("✗ Error: Either UPTIME_KUMA_API_TOKEN or UPTIME_KUMA_PASSWORD must be set", file=sys.stderr)
         sys.exit(1)
     
@@ -278,22 +192,15 @@ def main():
     print(f"   Uptime Kuma URL: {UPTIME_KUMA_URL}\n")
     
     # Connect to Uptime Kuma
-    password = UPTIME_KUMA_API_TOKEN if UPTIME_KUMA_API_TOKEN else UPTIME_KUMA_PASSWORD
-    username = UPTIME_KUMA_USERNAME if UPTIME_KUMA_USERNAME else ''
-    
-    api = connect_to_uptime_kuma(UPTIME_KUMA_URL, username, password)
+    api = connect_to_uptime_kuma(UPTIME_KUMA_URL, UPTIME_KUMA_USERNAME, password)
     if not api:
-        print("✗ Failed to connect to Uptime Kuma", file=sys.stderr)
         sys.exit(1)
     
     try:
         # Process each service
-        results = []
-        for service_config in services:
-            success = process_service(api, service_config)
-            results.append(success)
+        results = [process_service(api, service) for service in services]
         
-        # Summary
+        # Print summary
         successful = sum(results)
         failed = len(results) - successful
         
@@ -301,21 +208,16 @@ def main():
         print(f"   ✓ Successful: {successful}")
         if failed > 0:
             print(f"   ✗ Failed: {failed}")
-        
-        # Exit with error if any service failed
-        if failed > 0:
             sys.exit(1)
         
         print("\n✓ All version tags updated successfully")
-        sys.exit(0)
         
     finally:
-        # Always disconnect
         try:
             api.disconnect()
             print("Disconnected from Uptime Kuma")
-        except Exception as e:
-            print(f"⚠ Warning: Error disconnecting: {e}", file=sys.stderr)
+        except:
+            pass
 
 
 if __name__ == '__main__':
