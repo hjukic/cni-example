@@ -626,51 +626,84 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         current_tags = monitor.get('tags', [])
         print(f"DEBUG: Monitor current tags: {current_tags}")
         
+        # Get all tags to build proper tag objects
+        print(f"DEBUG: Fetching all tags to build tag objects...")
+        all_tags = client.get_tags()
+        if not all_tags:
+            print(f"DEBUG: Warning: Could not fetch tag list")
+            all_tags = []
+        
+        # Create a map of tag_id -> tag_info for easy lookup
+        tag_map = {tag.get('id'): tag for tag in all_tags}
+        
         # Filter out old version tags (tags starting with tag_prefix)
-        # Use tag information from monitor data directly (more reliable than fetching all tags)
-        filtered_tag_ids = []
+        # Keep tags as objects, not just IDs
+        filtered_tags = []
         for tag in current_tags:
             if isinstance(tag, dict):
                 tag_id = tag.get('tag_id')
                 tag_name = tag.get('name', '')
                 # Keep tags that don't start with the version prefix
                 if tag_name and not tag_name.startswith(f'{tag_prefix}-'):
-                    filtered_tag_ids.append(tag_id)
+                    filtered_tags.append(tag)
                     print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
                 else:
                     print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
             else:
-                # Fallback: if tag is just an ID, try to get name from all_tags
+                # Fallback: if tag is just an ID, convert to object
                 tag_id = tag
-                print(f"DEBUG: Tag is just ID {tag_id}, fetching tag list to get name...")
-                all_tags = client.get_tags()
-                if all_tags:
-                    tag_info = next((t for t in all_tags if t.get('id') == tag_id), None)
-                    if tag_info:
-                        tag_name = tag_info.get('name', '')
-                        if not tag_name.startswith(f'{tag_prefix}-'):
-                            filtered_tag_ids.append(tag_id)
-                            print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
-                        else:
-                            print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
+                print(f"DEBUG: Tag is just ID {tag_id}, converting to object...")
+                if tag_id in tag_map:
+                    tag_info = tag_map[tag_id]
+                    tag_name = tag_info.get('name', '')
+                    if not tag_name.startswith(f'{tag_prefix}-'):
+                        # Build tag object in the format Uptime Kuma expects
+                        tag_obj = {
+                            'tag_id': tag_id,
+                            'name': tag_name,
+                            'color': tag_info.get('color', '#3b82f6'),
+                            'value': ''
+                        }
+                        filtered_tags.append(tag_obj)
+                        print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
                     else:
-                        # If we can't find the tag, keep it as a safety measure
-                        print(f"DEBUG: Tag ID {tag_id} not found in tag list, keeping it")
-                        filtered_tag_ids.append(tag_id)
+                        print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
                 else:
-                    # If we can't get tag list, keep the tag as a safety measure
-                    print(f"DEBUG: Could not fetch tag list, keeping tag ID {tag_id} to preserve it")
-                    filtered_tag_ids.append(tag_id)
+                    # If we can't find the tag, keep it as a safety measure
+                    print(f"DEBUG: Tag ID {tag_id} not found in tag list, keeping it")
+                    tag_obj = {
+                        'tag_id': tag_id,
+                        'name': f'tag-{tag_id}',
+                        'color': '#3b82f6',
+                        'value': ''
+                    }
+                    filtered_tags.append(tag_obj)
         
-        # Add new version tag ID
-        filtered_tag_ids.append(version_tag_id)
-        print(f"DEBUG: Final tag IDs to set: {filtered_tag_ids}")
+        # Add new version tag as a proper object
+        if version_tag_id in tag_map:
+            version_tag_info = tag_map[version_tag_id]
+            version_tag_obj = {
+                'tag_id': version_tag_id,
+                'name': version_tag_info.get('name', version_tag_name),
+                'color': version_tag_info.get('color', '#3b82f6'),
+                'value': ''
+            }
+        else:
+            # If tag not in map yet (just created), build it manually
+            version_tag_obj = {
+                'tag_id': version_tag_id,
+                'name': version_tag_name,
+                'color': '#3b82f6',
+                'value': ''
+            }
+        filtered_tags.append(version_tag_obj)
+        print(f"DEBUG: Final tags to set: {filtered_tags}")
         
         # Update monitor with new tags
-        # Uptime Kuma expects tags as an array of tag IDs (integers)
+        # Uptime Kuma expects tags as an array of tag objects
         monitor_data = monitor.copy()
-        monitor_data['tags'] = filtered_tag_ids
-        print(f"DEBUG: Monitor data tags field type: {type(monitor_data['tags'])}, value: {monitor_data['tags']}")
+        monitor_data['tags'] = filtered_tags
+        print(f"DEBUG: Monitor data tags field type: {type(monitor_data['tags'])}, length: {len(monitor_data['tags'])}")
         
         print(f"DEBUG: Calling edit_monitor to update tags...")
         success = client.edit_monitor(monitor_data)
@@ -686,14 +719,18 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                 if updated_monitor:
                     updated_tags = updated_monitor.get('tags', [])
                     updated_tag_ids = [tag.get('tag_id') if isinstance(tag, dict) else tag for tag in updated_tags]
-                    print(f"DEBUG: Monitor now has {len(updated_tag_ids)} tag(s): {updated_tag_ids}")
+                    updated_tag_names = [tag.get('name') if isinstance(tag, dict) else f'tag-{tag}' for tag in updated_tags]
+                    print(f"DEBUG: Monitor now has {len(updated_tag_ids)} tag(s)")
+                    print(f"DEBUG: Tag IDs: {updated_tag_ids}")
+                    print(f"DEBUG: Tag names: {updated_tag_names}")
                     
-                    if version_tag_id in updated_tag_ids:
+                    if version_tag_id in updated_tag_ids or version_tag_name in updated_tag_names:
                         print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
                     else:
                         print(f"⚠ Warning: Tag {version_tag_id} ('{version_tag_name}') not found in monitor tags after update", file=sys.stderr)
-                        print(f"   Monitor tags: {updated_tag_ids}", file=sys.stderr)
-                        print(f"   Expected tag ID: {version_tag_id}", file=sys.stderr)
+                        print(f"   Monitor tag IDs: {updated_tag_ids}", file=sys.stderr)
+                        print(f"   Monitor tag names: {updated_tag_names}", file=sys.stderr)
+                        print(f"   Expected tag ID: {version_tag_id}, name: '{version_tag_name}'", file=sys.stderr)
                         # Still return success since the update call succeeded
                 else:
                     print(f"DEBUG: Could not find monitor {monitor_id} after update for verification")
