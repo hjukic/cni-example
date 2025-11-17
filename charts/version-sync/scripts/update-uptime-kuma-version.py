@@ -94,19 +94,36 @@ class UptimeKumaClient:
             print(f"✗ Server exception: {data}", file=sys.stderr)
             self.response_queue.put({'error': str(data)})
         
+        @self.sio.on('*')
+        def catch_all(event, data):
+            print(f"DEBUG: Received event '{event}' with data type: {type(data)}")
+            if event not in ['connect', 'disconnect', 'monitorList', 'tagList']:
+                print(f"DEBUG: Event '{event}' data: {data}")
+        
         # Generic response handler - will be used for callbacks
         # Note: We'll use specific callbacks for each operation instead of queue
         
         # Data event handlers (monitorList, tagList, etc.)
         @self.sio.on('monitorList')
         def on_monitor_list(data):
+            print(f"DEBUG: Received monitorList event")
+            print(f"DEBUG: Monitor data type: {type(data)}")
+            print(f"DEBUG: Monitor data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+            if isinstance(data, dict):
+                print(f"DEBUG: Number of monitors: {len(data)}")
             with self.lock:
                 self.event_data['monitorList'] = data
+                print(f"DEBUG: Stored monitorList in event_data")
         
         @self.sio.on('tagList')
         def on_tag_list(data):
+            print(f"DEBUG: Received tagList event")
+            print(f"DEBUG: Tag data type: {type(data)}")
+            if isinstance(data, list):
+                print(f"DEBUG: Number of tags: {len(data)}")
             with self.lock:
                 self.event_data['tagList'] = data
+                print(f"DEBUG: Stored tagList in event_data")
     
     def connect(self) -> bool:
         """Connect to Uptime Kuma Socket.io server."""
@@ -251,6 +268,13 @@ class UptimeKumaClient:
             if login_success:
                 self.authenticated = True
                 print("✓ Authenticated successfully")
+                
+                # Wait a moment to see if server sends any automatic data
+                print("DEBUG: Waiting briefly for any automatic data from server...")
+                time.sleep(1.0)
+                with self.lock:
+                    print(f"DEBUG: Available event_data keys after auth: {list(self.event_data.keys())}")
+                
                 return True
             else:
                 error_msg = login_error or 'Authentication failed'
@@ -269,23 +293,32 @@ class UptimeKumaClient:
             return None
         
         try:
+            print("DEBUG: get_monitors() called")
             # Clear previous data
             with self.lock:
                 if 'monitorList' in self.event_data:
+                    print("DEBUG: Clearing previous monitorList data")
                     del self.event_data['monitorList']
             
             # Request monitor list
+            print("DEBUG: Emitting 'monitorList' event to request monitors")
             self.sio.emit('monitorList')
+            print("DEBUG: 'monitorList' event emitted, waiting for response...")
             
             # Wait for response
             timeout = 5
             start_time = time.time()
+            check_count = 0
             while (time.time() - start_time) < timeout:
+                check_count += 1
                 with self.lock:
                     if 'monitorList' in self.event_data:
+                        print(f"DEBUG: Received monitorList after {check_count} checks ({time.time() - start_time:.2f}s)")
                         return self.event_data['monitorList']
                 time.sleep(0.1)
             
+            print(f"DEBUG: Timeout after {check_count} checks ({timeout}s)", file=sys.stderr)
+            print(f"DEBUG: Connected: {self.connected}, Authenticated: {self.authenticated}", file=sys.stderr)
             print("✗ Timeout waiting for monitor list", file=sys.stderr)
             return None
         except Exception as e:
@@ -520,31 +553,45 @@ def process_service(client: UptimeKumaClient, service_config: Dict[str, str]) ->
     print(f"   Endpoint: {version_endpoint}")
     
     # Fetch version
+    print(f"DEBUG: Fetching version from endpoint...")
     version = get_version(version_endpoint)
     if not version:
+        print(f"DEBUG: Failed to fetch version, returning False")
         return False
     
     print(f"   ✓ Fetched version: {version}")
     
     # Get monitor list and find monitor by name
+    print(f"DEBUG: Requesting monitor list...")
     monitors = client.get_monitors()
     if monitors is None:
+        print(f"DEBUG: get_monitors() returned None, marking service as failed")
+        print(f"   ✗ Failed to retrieve monitor list from Uptime Kuma")
         return False
+    
+    print(f"DEBUG: Successfully retrieved {len(monitors)} monitors")
+    print(f"DEBUG: Looking for monitor named '{monitor_name}'...")
     
     monitor_id = None
     for mid, monitor in monitors.items():
-        if monitor.get('name') == monitor_name:
+        monitor_name_in_list = monitor.get('name', '')
+        print(f"DEBUG: Checking monitor ID {mid}: '{monitor_name_in_list}'")
+        if monitor_name_in_list == monitor_name:
             monitor_id = int(mid)
+            print(f"DEBUG: Match found! Monitor ID: {monitor_id}")
             break
     
     if not monitor_id:
+        print(f"DEBUG: Monitor '{monitor_name}' not found in list")
         print(f"✗ Monitor '{monitor_name}' not found", file=sys.stderr)
         return False
     
     print(f"   ✓ Found monitor ID: {monitor_id}")
     
     # Update tags
+    print(f"DEBUG: Updating monitor tags...")
     success = update_monitor_tags(client, monitor_id, monitor_name, version, tag_prefix)
+    print(f"DEBUG: update_monitor_tags returned: {success}")
     return success
 
 
