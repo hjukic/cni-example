@@ -484,34 +484,32 @@ class UptimeKumaClient:
             self.sio.disconnect()
 
 
-def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = '#3b82f6') -> Optional[int]:
-    """Get or create a tag and return its ID."""
+def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = '#3b82f6') -> Optional[Dict[str, Any]]:
+    """Get or create a tag and return the full tag object."""
     try:
         # Get all tags
         tags = client.get_tags()
         if tags is None:
-            return None
+            tags = []
         
         # Check if tag exists
         for tag in tags:
             if tag.get('name', '') == tag_name:
-                tag_id = tag.get('id')
                 print(f"✓ Found existing tag '{tag_name}'")
-                return tag_id
+                return tag
         
         # Create new tag
         print(f"Creating new tag '{tag_name}'...")
         new_tag = client.add_tag(name=tag_name, color=tag_color)
         if new_tag:
-            tag_id = new_tag.get('id')
             print(f"✓ Created tag '{tag_name}'")
+            print(f"   Debug: Created tag object: {new_tag}")
             
-            # Force refresh the tag list to ensure it's in the cache
             # Wait a bit for the tag to be fully created on the server
             time.sleep(0.5)
-            client.get_tags(force_refresh=True)
             
-            return tag_id
+            # Return the full tag object
+            return new_tag
         
         return None
     except Exception as e:
@@ -537,16 +535,21 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         
         # Get or create version tag
         version_tag_name = f'{tag_prefix}-{version}'
-        version_tag_id = get_or_create_tag(client, version_tag_name)
+        version_tag_obj = get_or_create_tag(client, version_tag_name)
+        if not version_tag_obj:
+            return False
+        
+        version_tag_id = version_tag_obj.get('id')
         if not version_tag_id:
+            print(f"✗ Error: Created tag has no ID", file=sys.stderr)
             return False
         
         # Wait a moment after creating tag to ensure it's fully available
         time.sleep(0.5)
         
-        # Get current tags and all tags (force refresh to get latest)
+        # Get current tags and all tags
         current_tags = monitor.get('tags', [])
-        all_tags = client.get_tags(force_refresh=True)
+        all_tags = client.get_tags()
         if not all_tags:
             all_tags = []
         
@@ -555,7 +558,13 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         print(f"   Debug: All available tags: {all_tags}")
         
         # Create a map of tag_id -> tag_info for easy lookup
-        tag_map = {tag.get('id'): tag for tag in all_tags}
+        # Start with the version tag we just created/retrieved
+        tag_map = {version_tag_id: version_tag_obj}
+        # Add any other tags we can retrieve
+        for tag in all_tags:
+            tag_id = tag.get('id')
+            if tag_id:
+                tag_map[tag_id] = tag
         
         # Filter out old version tags (tags starting with tag_prefix)
         filtered_tags = []
@@ -591,23 +600,16 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
                     filtered_tags.append(tag_obj)
         
         # Add new version tag as a proper object
-        if version_tag_id in tag_map:
-            version_tag_info = tag_map[version_tag_id]
-            version_tag_obj = {
-                'tag_id': version_tag_id,
-                'name': version_tag_info.get('name', version_tag_name),
-                'color': version_tag_info.get('color', '#3b82f6'),
-                'value': ''
-            }
-        else:
-            # If tag not in map yet (just created), build it manually
-            version_tag_obj = {
-                'tag_id': version_tag_id,
-                'name': version_tag_name,
-                'color': '#3b82f6',
-                'value': ''
-            }
-        filtered_tags.append(version_tag_obj)
+        # Build the tag object in the format Uptime Kuma expects for editMonitor
+        new_version_tag = {
+            'tag_id': version_tag_id,
+            'name': version_tag_obj.get('name', version_tag_name),
+            'color': version_tag_obj.get('color', '#3b82f6'),
+            'value': ''
+        }
+        filtered_tags.append(new_version_tag)
+        
+        print(f"   Debug: Built version tag for monitor: {new_version_tag}")
         
         # Update monitor with new tags
         monitor_data = monitor.copy()
