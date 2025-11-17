@@ -3,4 +3,4 @@ kind: ConfigMap
 metadata:
   name: webapp-color-version
 data:
-  version.txt: {{ .Values.image.tag | quote }}
+  version.txt: {{ .Chart.Version | quote }}
