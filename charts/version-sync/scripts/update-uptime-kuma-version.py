@@ -2,22 +2,32 @@
 """
 Script to dynamically update Uptime Kuma monitor tags with version from version.txt endpoints.
 
+This script uses Socket.io directly to communicate with Uptime Kuma's API.
+According to https://github.com/louislam/uptime-kuma/wiki/API-Documentation,
+Uptime Kuma primarily uses Socket.io for real-time communication.
+
 This script:
 1. Fetches versions from multiple service endpoints
-2. Updates Uptime Kuma monitors with version tags
-3. Can be run as a CronJob in Kubernetes
-4. Requires SERVICES_CONFIG environment variable with JSON array of services
+2. Connects to Uptime Kuma via Socket.io
+3. Updates Uptime Kuma monitors with version tags using Socket.io events
+4. Can be run as a CronJob in Kubernetes
+5. Requires SERVICES_CONFIG environment variable with JSON array of services
 """
 
 import os
 import sys
 import requests
 import json
-import base64
-from typing import Optional, List, Dict
+import socketio
+import threading
+import time
+from typing import Optional, List, Dict, Any
+from queue import Queue
 
 # Configuration from environment variables
 UPTIME_KUMA_URL = os.getenv('UPTIME_KUMA_URL', 'http://uptime-kuma.uptime-kuma.svc.cluster.local:3001')
+UPTIME_KUMA_USERNAME = os.getenv('UPTIME_KUMA_USERNAME', '')
+UPTIME_KUMA_PASSWORD = os.getenv('UPTIME_KUMA_PASSWORD', '')
 UPTIME_KUMA_API_TOKEN = os.getenv('UPTIME_KUMA_API_TOKEN', '')
 VERIFY_SSL = os.getenv('VERIFY_SSL', 'false').lower() == 'true'
 
@@ -37,97 +47,263 @@ def get_version(version_endpoint: str) -> Optional[str]:
         return None
 
 
-def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
-    """Get monitor ID by name."""
-    try:
-        # Uptime Kuma API uses Basic Auth with API key as password
-        # Format: Basic base64(username:api_key) where username can be empty
-        auth_string = base64.b64encode(f':{api_token}'.encode()).decode()
-        headers = {
-            'Authorization': f'Basic {auth_string}',
-            'Content-Type': 'application/json'
-        }
-        response = requests.get(
-            f'{UPTIME_KUMA_URL}/api/monitors',
-            headers=headers,
-            timeout=10,
-            verify=VERIFY_SSL
-        )
-        response.raise_for_status()
+class UptimeKumaClient:
+    """Client for interacting with Uptime Kuma via Socket.io."""
+    
+    def __init__(self, url: str, verify_ssl: bool = False):
+        self.url = url
+        self.verify_ssl = verify_ssl
+        self.sio = socketio.Client()
+        self.connected = False
+        self.authenticated = False
+        self.response_queue = Queue()
+        self.event_data = {}
+        self.lock = threading.Lock()
         
-        # Check if response has content
-        if not response.text:
-            print(f"✗ Error fetching monitors: Empty response from API", file=sys.stderr)
-            print(f"   Status code: {response.status_code}", file=sys.stderr)
-            return None
+        # Set up event handlers
+        self._setup_handlers()
+    
+    def _setup_handlers(self):
+        """Set up Socket.io event handlers."""
         
-        # Check if we got HTML instead of JSON (wrong endpoint or auth issue)
-        if response.text.strip().startswith('<!DOCTYPE') or response.text.strip().startswith('<html'):
-            print(f"✗ Error fetching monitors: Received HTML instead of JSON", file=sys.stderr)
-            print(f"   Status code: {response.status_code}", file=sys.stderr)
-            print(f"   This usually means the API endpoint is wrong or authentication failed", file=sys.stderr)
-            print(f"   URL: {response.url}", file=sys.stderr)
-            return None
+        @self.sio.on('connect')
+        def on_connect():
+            self.connected = True
+            print("✓ Connected to Uptime Kuma Socket.io")
         
-        # Try to parse JSON
+        @self.sio.on('disconnect')
+        def on_disconnect():
+            self.connected = False
+            self.authenticated = False
+            print("⚠ Disconnected from Uptime Kuma Socket.io")
+        
+        @self.sio.on('connect_error')
+        def on_connect_error(data):
+            print(f"✗ Connection error: {data}", file=sys.stderr)
+            self.response_queue.put({'error': str(data)})
+        
+        # Generic response handler
+        @self.sio.on('res')
+        def on_res(data):
+            self.response_queue.put(data)
+        
+        # Data event handlers (monitorList, tagList, etc.)
+        @self.sio.on('monitorList')
+        def on_monitor_list(data):
+            with self.lock:
+                self.event_data['monitorList'] = data
+        
+        @self.sio.on('tagList')
+        def on_tag_list(data):
+            with self.lock:
+                self.event_data['tagList'] = data
+    
+    def connect(self) -> bool:
+        """Connect to Uptime Kuma Socket.io server."""
         try:
-            monitors = response.json()
-        except json.JSONDecodeError as e:
-            print(f"✗ Error parsing monitors response: {e}", file=sys.stderr)
-            print(f"   Status code: {response.status_code}", file=sys.stderr)
-            print(f"   Response content (first 500 chars): {response.text[:500]}", file=sys.stderr)
+            print(f"Connecting to Uptime Kuma at {self.url}...")
+            self.sio.connect(self.url, wait_timeout=10)
+            
+            # Wait for connection
+            timeout = 5
+            start_time = time.time()
+            while not self.connected and (time.time() - start_time) < timeout:
+                time.sleep(0.1)
+            
+            if not self.connected:
+                print("✗ Connection timeout", file=sys.stderr)
+                return False
+            
+            return True
+        except Exception as e:
+            print(f"✗ Error connecting: {e}", file=sys.stderr)
+            return False
+    
+    def login(self, username: str, password: str) -> bool:
+        """Authenticate with Uptime Kuma."""
+        if not self.connected:
+            print("✗ Not connected", file=sys.stderr)
+            return False
+        
+        try:
+            # Clear any previous responses
+            while not self.response_queue.empty():
+                self.response_queue.get()
+            
+            # Send login event
+            self.sio.emit('login', {
+                'username': username,
+                'password': password
+            })
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                try:
+                    response = self.response_queue.get(timeout=0.5)
+                    if response.get('ok'):
+                        self.authenticated = True
+                        print("✓ Authenticated successfully")
+                        return True
+                    else:
+                        error_msg = response.get('msg', 'Authentication failed')
+                        print(f"✗ Authentication failed: {error_msg}", file=sys.stderr)
+                        return False
+                except:
+                    continue
+            
+            print("✗ Authentication timeout", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"✗ Error during authentication: {e}", file=sys.stderr)
+            return False
+    
+    def get_monitors(self) -> Optional[Dict[str, Any]]:
+        """Get list of monitors."""
+        if not self.authenticated:
+            print("✗ Not authenticated", file=sys.stderr)
             return None
         
-        # Check if monitors is a list
-        if not isinstance(monitors, list):
-            print(f"✗ Error: Expected list of monitors, got {type(monitors)}", file=sys.stderr)
-            print(f"   Response: {response.text[:500]}", file=sys.stderr)
+        try:
+            # Clear previous data
+            with self.lock:
+                if 'monitorList' in self.event_data:
+                    del self.event_data['monitorList']
+            
+            # Request monitor list
+            self.sio.emit('monitorList')
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                with self.lock:
+                    if 'monitorList' in self.event_data:
+                        return self.event_data['monitorList']
+                time.sleep(0.1)
+            
+            print("✗ Timeout waiting for monitor list", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"✗ Error getting monitors: {e}", file=sys.stderr)
+            return None
+    
+    def get_tags(self) -> Optional[List[Dict[str, Any]]]:
+        """Get list of tags."""
+        if not self.authenticated:
+            print("✗ Not authenticated", file=sys.stderr)
             return None
         
-        for monitor in monitors:
-            if monitor.get('name') == monitor_name:
-                monitor_id = monitor.get('id')
-                return monitor_id
+        try:
+            # Clear previous data
+            with self.lock:
+                if 'tagList' in self.event_data:
+                    del self.event_data['tagList']
+            
+            # Request tag list
+            self.sio.emit('tagList')
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                with self.lock:
+                    if 'tagList' in self.event_data:
+                        return self.event_data['tagList']
+                time.sleep(0.1)
+            
+            print("✗ Timeout waiting for tag list", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"✗ Error getting tags: {e}", file=sys.stderr)
+            return None
+    
+    def add_tag(self, name: str, color: str = '#3b82f6') -> Optional[Dict[str, Any]]:
+        """Create a new tag."""
+        if not self.authenticated:
+            print("✗ Not authenticated", file=sys.stderr)
+            return None
         
-        print(f"✗ Monitor '{monitor_name}' not found", file=sys.stderr)
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f"✗ Error fetching monitors: {e}", file=sys.stderr)
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"   Status code: {e.response.status_code}", file=sys.stderr)
-            print(f"   Response: {e.response.text[:500]}", file=sys.stderr)
-        return None
+        try:
+            # Clear any previous responses
+            while not self.response_queue.empty():
+                self.response_queue.get()
+            
+            # Send addTag event
+            self.sio.emit('addTag', {
+                'name': name,
+                'color': color
+            })
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                try:
+                    response = self.response_queue.get(timeout=0.5)
+                    if response.get('ok'):
+                        return response.get('tag')
+                    else:
+                        error_msg = response.get('msg', 'Failed to create tag')
+                        print(f"✗ Error creating tag: {error_msg}", file=sys.stderr)
+                        return None
+                except:
+                    continue
+            
+            print("✗ Timeout creating tag", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"✗ Error creating tag: {e}", file=sys.stderr)
+            return None
+    
+    def edit_monitor(self, monitor_data: Dict[str, Any]) -> bool:
+        """Update a monitor."""
+        if not self.authenticated:
+            print("✗ Not authenticated", file=sys.stderr)
+            return False
+        
+        try:
+            # Clear any previous responses
+            while not self.response_queue.empty():
+                self.response_queue.get()
+            
+            # Send editMonitor event
+            self.sio.emit('editMonitor', monitor_data)
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                try:
+                    response = self.response_queue.get(timeout=0.5)
+                    if response.get('ok'):
+                        return True
+                    else:
+                        error_msg = response.get('msg', 'Failed to update monitor')
+                        print(f"✗ Error updating monitor: {error_msg}", file=sys.stderr)
+                        return False
+                except:
+                    continue
+            
+            print("✗ Timeout updating monitor", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"✗ Error updating monitor: {e}", file=sys.stderr)
+            return False
+    
+    def disconnect(self):
+        """Disconnect from Uptime Kuma."""
+        if self.connected:
+            self.sio.disconnect()
 
 
-def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
+def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = '#3b82f6') -> Optional[int]:
     """Get or create a tag and return its ID."""
     try:
-        # Uptime Kuma API uses Basic Auth with API key as password
-        auth_string = base64.b64encode(f':{api_token}'.encode()).decode()
-        headers = {
-            'Authorization': f'Basic {auth_string}',
-            'Content-Type': 'application/json'
-        }
-        
         # Get all tags
-        response = requests.get(
-            f'{UPTIME_KUMA_URL}/api/tags',
-            headers=headers,
-            timeout=10,
-            verify=VERIFY_SSL
-        )
-        response.raise_for_status()
-        
-        # Check if response has content
-        if not response.text:
-            print(f"✗ Error fetching tags: Empty response from API", file=sys.stderr)
-            return None
-        
-        try:
-            tags = response.json()
-        except json.JSONDecodeError as e:
-            print(f"✗ Error parsing tags response: {e}", file=sys.stderr)
-            print(f"   Response: {response.text[:500]}", file=sys.stderr)
+        tags = client.get_tags()
+        if tags is None:
             return None
         
         # Check if tag exists
@@ -139,47 +315,34 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
         
         # Create new tag
         print(f"Creating new tag '{tag_name}'...")
-        create_response = requests.post(
-            f'{UPTIME_KUMA_URL}/api/tags',
-            headers=headers,
-            json={'name': tag_name, 'color': '#3b82f6'},  # Blue color
-            timeout=10,
-            verify=VERIFY_SSL
-        )
-        create_response.raise_for_status()
-        new_tag = create_response.json()
-        tag_id = new_tag.get('id')
-        print(f"✓ Created tag '{tag_name}' with ID: {tag_id}")
-        return tag_id
+        new_tag = client.add_tag(name=tag_name, color=tag_color)
+        if new_tag:
+            tag_id = new_tag.get('id')
+            print(f"✓ Created tag '{tag_name}' with ID: {tag_id}")
+            return tag_id
         
-    except requests.exceptions.RequestException as e:
+        return None
+    except Exception as e:
         print(f"✗ Error managing tags: {e}", file=sys.stderr)
         return None
 
 
-def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version'):
+def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version') -> bool:
     """Update monitor with version tag."""
     try:
-        # Uptime Kuma API uses Basic Auth with API key as password
-        auth_string = base64.b64encode(f':{api_token}'.encode()).decode()
-        headers = {
-            'Authorization': f'Basic {auth_string}',
-            'Content-Type': 'application/json'
-        }
+        # Get monitor list to find the monitor
+        monitors = client.get_monitors()
+        if monitors is None:
+            return False
         
-        # Get current monitor details
-        response = requests.get(
-            f'{UPTIME_KUMA_URL}/api/monitor/{monitor_id}',
-            headers=headers,
-            timeout=10,
-            verify=VERIFY_SSL
-        )
-        response.raise_for_status()
-        monitor = response.json()
+        monitor = monitors.get(str(monitor_id))
+        if not monitor:
+            print(f"✗ Monitor ID {monitor_id} not found", file=sys.stderr)
+            return False
         
         # Get or create version tag
         version_tag_name = f'{tag_prefix}-{version}'
-        version_tag_id = get_or_create_tag(api_token, version_tag_name)
+        version_tag_id = get_or_create_tag(client, version_tag_name)
         if not version_tag_id:
             return False
         
@@ -187,51 +350,36 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
         current_tags = monitor.get('tags', [])
         current_tag_ids = [tag.get('tag_id') if isinstance(tag, dict) else tag for tag in current_tags]
         
-        # Remove old version tags (tags starting with tag_prefix)
-        if current_tags:
-            all_tags_response = requests.get(
-                f'{UPTIME_KUMA_URL}/api/tags',
-                headers=headers,
-                timeout=10,
-                verify=VERIFY_SSL
-            )
-            all_tags_response.raise_for_status()
-            all_tags = all_tags_response.json()
-            
-            # Filter out old version tags
-            filtered_tag_ids = []
-            for tag_id in current_tag_ids:
-                tag_info = next((t for t in all_tags if t.get('id') == tag_id), None)
-                if tag_info and not tag_info.get('name', '').startswith(f'{tag_prefix}-'):
-                    filtered_tag_ids.append(tag_id)
-            
-            # Add new version tag
-            filtered_tag_ids.append(version_tag_id)
-        else:
-            filtered_tag_ids = [version_tag_id]
+        # Get all tags to filter out old version tags
+        all_tags = client.get_tags()
+        if all_tags is None:
+            return False
+        
+        # Filter out old version tags (tags starting with tag_prefix)
+        filtered_tag_ids = []
+        for tag_id in current_tag_ids:
+            tag_info = next((t for t in all_tags if t.get('id') == tag_id), None)
+            if tag_info and not tag_info.get('name', '').startswith(f'{tag_prefix}-'):
+                filtered_tag_ids.append(tag_id)
+        
+        # Add new version tag
+        filtered_tag_ids.append(version_tag_id)
         
         # Update monitor with new tags
-        update_data = monitor.copy()
-        update_data['tags'] = filtered_tag_ids
+        monitor_data = monitor.copy()
+        monitor_data['tags'] = filtered_tag_ids
         
-        update_response = requests.put(
-            f'{UPTIME_KUMA_URL}/api/monitor/{monitor_id}',
-            headers=headers,
-            json=update_data,
-            timeout=10,
-            verify=VERIFY_SSL
-        )
-        update_response.raise_for_status()
+        success = client.edit_monitor(monitor_data)
+        if success:
+            print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
         
-        print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
-        return True
-        
-    except requests.exceptions.RequestException as e:
+        return success
+    except Exception as e:
         print(f"✗ Error updating monitor '{monitor_name}': {e}", file=sys.stderr)
         return False
 
 
-def process_service(api_token: str, service_config: Dict[str, str]) -> bool:
+def process_service(client: UptimeKumaClient, service_config: Dict[str, str]) -> bool:
     """Process a single service configuration."""
     monitor_name = service_config.get('monitorName', '')
     version_endpoint = service_config.get('versionEndpoint', '')
@@ -251,15 +399,25 @@ def process_service(api_token: str, service_config: Dict[str, str]) -> bool:
     
     print(f"   ✓ Fetched version: {version}")
     
-    # Get monitor ID
-    monitor_id = get_monitor_id(api_token, monitor_name)
+    # Get monitor list and find monitor by name
+    monitors = client.get_monitors()
+    if monitors is None:
+        return False
+    
+    monitor_id = None
+    for mid, monitor in monitors.items():
+        if monitor.get('name') == monitor_name:
+            monitor_id = int(mid)
+            break
+    
     if not monitor_id:
+        print(f"✗ Monitor '{monitor_name}' not found", file=sys.stderr)
         return False
     
     print(f"   ✓ Found monitor ID: {monitor_id}")
     
     # Update tags
-    success = update_monitor_tags(api_token, monitor_id, monitor_name, version, tag_prefix)
+    success = update_monitor_tags(client, monitor_id, monitor_name, version, tag_prefix)
     return success
 
 
@@ -288,8 +446,9 @@ def parse_services_config() -> List[Dict[str, str]]:
 
 def main():
     """Main execution."""
-    if not UPTIME_KUMA_API_TOKEN:
-        print("✗ Error: UPTIME_KUMA_API_TOKEN environment variable is required", file=sys.stderr)
+    # Check authentication credentials
+    if not UPTIME_KUMA_API_TOKEN and not UPTIME_KUMA_PASSWORD:
+        print("✗ Error: Either UPTIME_KUMA_API_TOKEN or UPTIME_KUMA_PASSWORD must be set", file=sys.stderr)
         sys.exit(1)
     
     # Parse service configurations
@@ -300,29 +459,48 @@ def main():
     print(f"\n🚀 Starting version sync for {len(services)} service(s)")
     print(f"   Uptime Kuma URL: {UPTIME_KUMA_URL}\n")
     
-    # Process each service
-    results = []
-    for service_config in services:
-        success = process_service(UPTIME_KUMA_API_TOKEN, service_config)
-        results.append(success)
+    # Create client and connect
+    client = UptimeKumaClient(UPTIME_KUMA_URL, verify_ssl=VERIFY_SSL)
     
-    # Summary
-    successful = sum(results)
-    failed = len(results) - successful
-    
-    print(f"\n📊 Summary:")
-    print(f"   ✓ Successful: {successful}")
-    if failed > 0:
-        print(f"   ✗ Failed: {failed}")
-    
-    # Exit with error if any service failed
-    if failed > 0:
+    if not client.connect():
+        print("✗ Failed to connect to Uptime Kuma", file=sys.stderr)
         sys.exit(1)
     
-    print("\n✓ All version tags updated successfully")
-    sys.exit(0)
+    try:
+        # Authenticate
+        password = UPTIME_KUMA_API_TOKEN if UPTIME_KUMA_API_TOKEN else UPTIME_KUMA_PASSWORD
+        username = UPTIME_KUMA_USERNAME if UPTIME_KUMA_USERNAME else ''
+        
+        if not client.login(username, password):
+            print("✗ Failed to authenticate with Uptime Kuma", file=sys.stderr)
+            sys.exit(1)
+        
+        # Process each service
+        results = []
+        for service_config in services:
+            success = process_service(client, service_config)
+            results.append(success)
+        
+        # Summary
+        successful = sum(results)
+        failed = len(results) - successful
+        
+        print(f"\n📊 Summary:")
+        print(f"   ✓ Successful: {successful}")
+        if failed > 0:
+            print(f"   ✗ Failed: {failed}")
+        
+        # Exit with error if any service failed
+        if failed > 0:
+            sys.exit(1)
+        
+        print("\n✓ All version tags updated successfully")
+        sys.exit(0)
+        
+    finally:
+        # Always disconnect
+        client.disconnect()
 
 
 if __name__ == '__main__':
     main()
-

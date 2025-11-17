@@ -21,7 +21,7 @@ spec:
           - name: version-sync
             image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
             imagePullPolicy: {{ .Values.image.pullPolicy }}
-            command: ["sh", "-c", "pip install --no-cache-dir requests && python3 /app/update-uptime-kuma-version.py"]
+            command: ["sh", "-c", "pip install --no-cache-dir requests python-socketio && python3 /app/update-uptime-kuma-version.py"]
             volumeMounts:
             - name: script
               mountPath: /app
@@ -29,11 +29,27 @@ spec:
             env:
             - name: UPTIME_KUMA_URL
               value: {{ .Values.uptimeKuma.url | quote }}
+            {{- if .Values.uptimeKuma.secretName }}
             - name: UPTIME_KUMA_API_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.uptimeKuma.secretName }}
                   key: api-token
+            {{- end }}
+            {{- if .Values.uptimeKuma.usernameSecret }}
+            - name: UPTIME_KUMA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.uptimeKuma.usernameSecret.name }}
+                  key: {{ .Values.uptimeKuma.usernameSecret.key }}
+            {{- end }}
+            {{- if .Values.uptimeKuma.passwordSecret }}
+            - name: UPTIME_KUMA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.uptimeKuma.passwordSecret.name }}
+                  key: {{ .Values.uptimeKuma.passwordSecret.key }}
+            {{- end }}
             - name: SERVICES_CONFIG
               value: {{ .Values.services | toJson | quote }}
             - name: VERIFY_SSL
