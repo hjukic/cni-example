@@ -609,27 +609,42 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         # Get current tags
         current_tags = monitor.get('tags', [])
         print(f"DEBUG: Monitor current tags: {current_tags}")
-        current_tag_ids = [tag.get('tag_id') if isinstance(tag, dict) else tag for tag in current_tags]
-        print(f"DEBUG: Current tag IDs: {current_tag_ids}")
-        
-        # Get all tags to filter out old version tags
-        print(f"DEBUG: Getting all tags to filter old version tags...")
-        all_tags = client.get_tags()
-        if all_tags is None:
-            print(f"DEBUG: get_tags() returned None in update_monitor_tags")
-            return False
         
         # Filter out old version tags (tags starting with tag_prefix)
+        # Use tag information from monitor data directly (more reliable than fetching all tags)
         filtered_tag_ids = []
-        for tag_id in current_tag_ids:
-            tag_info = next((t for t in all_tags if t.get('id') == tag_id), None)
-            if tag_info:
-                tag_name = tag_info.get('name', '')
-                if not tag_name.startswith(f'{tag_prefix}-'):
+        for tag in current_tags:
+            if isinstance(tag, dict):
+                tag_id = tag.get('tag_id')
+                tag_name = tag.get('name', '')
+                # Keep tags that don't start with the version prefix
+                if tag_name and not tag_name.startswith(f'{tag_prefix}-'):
                     filtered_tag_ids.append(tag_id)
                     print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
                 else:
                     print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
+            else:
+                # Fallback: if tag is just an ID, try to get name from all_tags
+                tag_id = tag
+                print(f"DEBUG: Tag is just ID {tag_id}, fetching tag list to get name...")
+                all_tags = client.get_tags()
+                if all_tags:
+                    tag_info = next((t for t in all_tags if t.get('id') == tag_id), None)
+                    if tag_info:
+                        tag_name = tag_info.get('name', '')
+                        if not tag_name.startswith(f'{tag_prefix}-'):
+                            filtered_tag_ids.append(tag_id)
+                            print(f"DEBUG: Keeping tag ID {tag_id} ('{tag_name}')")
+                        else:
+                            print(f"DEBUG: Removing old version tag ID {tag_id} ('{tag_name}')")
+                    else:
+                        # If we can't find the tag, keep it as a safety measure
+                        print(f"DEBUG: Tag ID {tag_id} not found in tag list, keeping it")
+                        filtered_tag_ids.append(tag_id)
+                else:
+                    # If we can't get tag list, keep the tag as a safety measure
+                    print(f"DEBUG: Could not fetch tag list, keeping tag ID {tag_id} to preserve it")
+                    filtered_tag_ids.append(tag_id)
         
         # Add new version tag
         filtered_tag_ids.append(version_tag_id)
