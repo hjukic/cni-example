@@ -39,13 +39,14 @@ def get_version(version_endpoint: str) -> Optional[str]:
 def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
     """Get monitor ID by name."""
     try:
+        # Uptime Kuma API uses token as query parameter, not Bearer token
         headers = {
-            'Authorization': f'Bearer {api_token}',
             'Content-Type': 'application/json'
         }
         response = requests.get(
             f'{UPTIME_KUMA_URL}/api/monitors',
             headers=headers,
+            params={'token': api_token},
             timeout=10,
             verify=VERIFY_SSL
         )
@@ -55,6 +56,14 @@ def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
         if not response.text:
             print(f"✗ Error fetching monitors: Empty response from API", file=sys.stderr)
             print(f"   Status code: {response.status_code}", file=sys.stderr)
+            return None
+        
+        # Check if we got HTML instead of JSON (wrong endpoint or auth issue)
+        if response.text.strip().startswith('<!DOCTYPE') or response.text.strip().startswith('<html'):
+            print(f"✗ Error fetching monitors: Received HTML instead of JSON", file=sys.stderr)
+            print(f"   Status code: {response.status_code}", file=sys.stderr)
+            print(f"   This usually means the API endpoint is wrong or authentication failed", file=sys.stderr)
+            print(f"   URL: {response.url}", file=sys.stderr)
             return None
         
         # Try to parse JSON
@@ -91,7 +100,6 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
     """Get or create a tag and return its ID."""
     try:
         headers = {
-            'Authorization': f'Bearer {api_token}',
             'Content-Type': 'application/json'
         }
         
@@ -99,6 +107,7 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
         response = requests.get(
             f'{UPTIME_KUMA_URL}/api/tags',
             headers=headers,
+            params={'token': api_token},
             timeout=10,
             verify=VERIFY_SSL
         )
@@ -128,6 +137,7 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
         create_response = requests.post(
             f'{UPTIME_KUMA_URL}/api/tags',
             headers=headers,
+            params={'token': api_token},
             json={'name': tag_name, 'color': '#3b82f6'},  # Blue color
             timeout=10,
             verify=VERIFY_SSL
@@ -147,7 +157,6 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
     """Update monitor with version tag."""
     try:
         headers = {
-            'Authorization': f'Bearer {api_token}',
             'Content-Type': 'application/json'
         }
         
@@ -155,6 +164,7 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
         response = requests.get(
             f'{UPTIME_KUMA_URL}/api/monitor/{monitor_id}',
             headers=headers,
+            params={'token': api_token},
             timeout=10,
             verify=VERIFY_SSL
         )
@@ -176,6 +186,7 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
             all_tags_response = requests.get(
                 f'{UPTIME_KUMA_URL}/api/tags',
                 headers=headers,
+                params={'token': api_token},
                 timeout=10,
                 verify=VERIFY_SSL
             )
@@ -201,6 +212,7 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
         update_response = requests.put(
             f'{UPTIME_KUMA_URL}/api/monitor/{monitor_id}',
             headers=headers,
+            params={'token': api_token},
             json=update_data,
             timeout=10,
             verify=VERIFY_SSL
