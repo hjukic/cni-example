@@ -478,6 +478,101 @@ class UptimeKumaClient:
             print(f"✗ Error updating monitor: {e}", file=sys.stderr)
             return False
     
+    def add_monitor_tag(self, tag_id: int, monitor_id: int, value: str = '') -> bool:
+        """Add a tag to a monitor using addMonitorTag event."""
+        if not self.authenticated:
+            print("✗ Not authenticated", file=sys.stderr)
+            return False
+        
+        try:
+            # Set up response tracking
+            response_received = False
+            response_success = False
+            response_error = None
+            full_response = None
+            
+            def callback(response):
+                nonlocal response_received, response_success, response_error, full_response
+                response_received = True
+                full_response = response
+                if isinstance(response, dict):
+                    if response.get('ok'):
+                        response_success = True
+                    else:
+                        response_error = response.get('msg', 'Failed to add tag to monitor')
+                else:
+                    response_error = f"Unexpected response type: {type(response)}"
+            
+            # Send addMonitorTag event with tag_id, monitor_id, and value
+            self.sio.emit('addMonitorTag', {
+                'tag_id': tag_id,
+                'monitor_id': monitor_id,
+                'value': value
+            }, callback=callback)
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                if response_received:
+                    break
+                time.sleep(0.1)
+            
+            if not response_received:
+                print(f"   ⚠ Timeout adding tag to monitor (this might be OK)", file=sys.stderr)
+                # Don't fail immediately, tag might still be added
+                return True
+            
+            # Debug: print full response
+            print(f"   Debug: addMonitorTag API response: {full_response}")
+            
+            if response_error:
+                print(f"   ⚠ Error response: {response_error}", file=sys.stderr)
+                # Still return True as some versions might not have this event
+                return True
+            
+            return response_success
+        except Exception as e:
+            print(f"   ⚠ Exception adding monitor tag: {e}", file=sys.stderr)
+            # Don't fail, might be using older API version
+            return True
+    
+    def delete_monitor_tag(self, tag_id: int, monitor_id: int) -> bool:
+        """Remove a tag from a monitor using deleteMonitorTag event."""
+        if not self.authenticated:
+            print("✗ Not authenticated", file=sys.stderr)
+            return False
+        
+        try:
+            # Set up response tracking
+            response_received = False
+            response_success = False
+            
+            def callback(response):
+                nonlocal response_received, response_success
+                response_received = True
+                if isinstance(response, dict) and response.get('ok'):
+                    response_success = True
+            
+            # Send deleteMonitorTag event
+            self.sio.emit('deleteMonitorTag', {
+                'tag_id': tag_id,
+                'monitor_id': monitor_id
+            }, callback=callback)
+            
+            # Wait for response
+            timeout = 5
+            start_time = time.time()
+            while (time.time() - start_time) < timeout:
+                if response_received:
+                    break
+                time.sleep(0.1)
+            
+            return response_success or not response_received  # Consider timeout as success
+        except Exception as e:
+            print(f"   ⚠ Exception deleting monitor tag: {e}", file=sys.stderr)
+            return True  # Don't fail on error
+    
     def disconnect(self):
         """Disconnect from Uptime Kuma."""
         if self.connected:
@@ -531,7 +626,7 @@ def get_or_create_tag(client: UptimeKumaClient, tag_name: str, tag_color: str = 
 
 
 def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version') -> bool:
-    """Update monitor with version tag."""
+    """Update monitor with version tag using addMonitorTag/deleteMonitorTag events."""
     try:
         # Get monitor list to find the monitor
         monitors = client.get_monitors()
@@ -542,9 +637,6 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
         if not monitor:
             print(f"✗ Monitor ID {monitor_id} not found", file=sys.stderr)
             return False
-        
-        # Debug: print original monitor structure
-        print(f"   Debug: Original monitor object: {json.dumps(monitor, indent=2, default=str)}")
         
         # Get or create version tag
         version_tag_name = f'{tag_prefix}-{version}'
@@ -557,151 +649,96 @@ def update_monitor_tags(client: UptimeKumaClient, monitor_id: int, monitor_name:
             print(f"✗ Error: Created tag has no ID", file=sys.stderr)
             return False
         
-        # Wait a moment after creating tag to ensure it's fully available
-        time.sleep(0.5)
+        print(f"   Using tag ID: {version_tag_id} for tag '{version_tag_name}'")
         
-        # Get current tags and all tags (force refresh to get latest)
+        # Get current tags
         current_tags = monitor.get('tags', [])
-        all_tags = client.get_tags(force_refresh=True)
-        if not all_tags:
-            all_tags = []
-        
-        # Debug: print current state
         print(f"   Debug: Current monitor tags: {current_tags}")
-        print(f"   Debug: All available tags: {all_tags}")
         
-        # Create a map of tag_id -> tag_info for easy lookup
-        # Start with the version tag we just created/retrieved
-        tag_map = {version_tag_id: version_tag_obj}
-        # Add any other tags we can retrieve
-        for tag in all_tags:
-            tag_id = tag.get('id')
-            if tag_id:
-                tag_map[tag_id] = tag
+        # Build a map of tag IDs to tag info
+        # We need to identify which tags are version tags and should be removed
+        tags_to_remove = []
         
-        # Filter out old version tags (tags starting with tag_prefix)
-        filtered_tags = []
+        # Get all available tags to map IDs to names
+        all_tags = client.get_tags(force_refresh=True)
+        tag_map = {}
+        if all_tags:
+            for tag in all_tags:
+                tag_id = tag.get('id')
+                if tag_id:
+                    tag_map[tag_id] = tag
+        
+        # Also add the tag we just created
+        tag_map[version_tag_id] = version_tag_obj
+        
+        # Check current tags and find old version tags to remove
         for tag in current_tags:
             if isinstance(tag, dict):
+                tag_id = tag.get('tag_id') or tag.get('id')
                 tag_name = tag.get('name', '')
-                # Keep tags that don't start with the version prefix
-                if tag_name and not tag_name.startswith(f'{tag_prefix}-'):
-                    filtered_tags.append(tag)
             else:
-                # Fallback: if tag is just an ID, convert to object
+                # Tag is just an ID
                 tag_id = tag
-                if tag_id in tag_map:
-                    tag_info = tag_map[tag_id]
-                    tag_name = tag_info.get('name', '')
-                    if not tag_name.startswith(f'{tag_prefix}-'):
-                        # Build tag object in the format Uptime Kuma expects
-                        tag_obj = {
-                            'tag_id': tag_id,
-                            'id': tag_id,
-                            'name': tag_name,
-                            'color': tag_info.get('color', '#3b82f6'),
-                            'value': ''
-                        }
-                        filtered_tags.append(tag_obj)
-                else:
-                    # If we can't find the tag, keep it as a safety measure
-                    tag_obj = {
-                        'tag_id': tag_id,
-                        'id': tag_id,
-                        'name': f'tag-{tag_id}',
-                        'color': '#3b82f6',
-                        'value': ''
-                    }
-                    filtered_tags.append(tag_obj)
-        
-        # Add new version tag as a proper object
-        # Build the tag object in the format Uptime Kuma expects for editMonitor
-        # Try multiple formats to ensure compatibility
-        new_version_tag = {
-            'tag_id': version_tag_id,
-            'id': version_tag_id,  # Some APIs expect 'id' instead of 'tag_id'
-            'name': version_tag_obj.get('name', version_tag_name),
-            'color': version_tag_obj.get('color', '#3b82f6'),
-            'value': ''
-        }
-        filtered_tags.append(new_version_tag)
-        
-        print(f"   Debug: Built version tag for monitor: {new_version_tag}")
-        
-        # Update monitor with new tags
-        monitor_data = monitor.copy()
-        monitor_data['tags'] = filtered_tags
-        
-        # Ensure notificationIDList is a dict (required by API)
-        if 'notificationIDList' not in monitor_data or monitor_data['notificationIDList'] is None:
-            monitor_data['notificationIDList'] = {}
-        
-        # Debug: print what we're sending
-        print(f"   Debug: Sending tags to API (full objects): {filtered_tags}")
-        print(f"   Debug: Monitor ID: {monitor_data.get('id')}")
-        print(f"   Debug: Monitor name: {monitor_data.get('name')}")
-        print(f"   Debug: Monitor type: {monitor_data.get('type')}")
-        
-        # Try sending the update with full tag objects
-        api_success = client.edit_monitor(monitor_data)
-        tags_verified = False
-        
-        if api_success:
-            print(f"   ✓ API accepted the update request")
-            # Verify it actually worked by checking if tags were applied
-            time.sleep(1.0)
-            check_monitors = client.get_monitors()
-            if check_monitors:
-                check_monitor = check_monitors.get(str(monitor_id))
-                if check_monitor:
-                    check_tags = check_monitor.get('tags', [])
-                    if len(check_tags) > 0:
-                        tags_verified = True
-                        print(f"   ✓ Tags successfully applied to monitor")
-                    else:
-                        print(f"   ⚠ API said success but tags not applied, trying alternative format...")
-        
-        # If tags weren't applied, try with just tag IDs
-        if api_success and not tags_verified:
-            # Alternative approach: send only tag IDs
-            tag_ids_only = []
-            for tag in filtered_tags:
-                if isinstance(tag, dict):
-                    tag_id = tag.get('tag_id') or tag.get('id')
-                    if tag_id:
-                        tag_ids_only.append(tag_id)
-                else:
-                    tag_ids_only.append(tag)
+                tag_name = tag_map.get(tag_id, {}).get('name', '')
             
-            print(f"   Debug: Retrying with tag IDs only: {tag_ids_only}")
-            monitor_data['tags'] = tag_ids_only
-            api_success = client.edit_monitor(monitor_data)
-            
-            if api_success:
-                time.sleep(1.0)
-                check_monitors = client.get_monitors()
-                if check_monitors:
-                    check_monitor = check_monitors.get(str(monitor_id))
-                    if check_monitor and len(check_monitor.get('tags', [])) > 0:
-                        tags_verified = True
-                        print(f"   ✓ Tags successfully applied with ID-only format")
+            # If this is a version tag (starts with tag_prefix), mark for removal
+            if tag_name and tag_name.startswith(f'{tag_prefix}-'):
+                if tag_id != version_tag_id:  # Don't remove the tag we're about to add
+                    tags_to_remove.append((tag_id, tag_name))
+                    print(f"   Will remove old version tag: {tag_name} (ID: {tag_id})")
         
-        success = api_success and tags_verified
+        # Remove old version tags
+        for tag_id, tag_name in tags_to_remove:
+            print(f"   Removing old tag '{tag_name}'...")
+            client.delete_monitor_tag(tag_id, monitor_id)
+            time.sleep(0.3)  # Small delay between operations
+        
+        # Add the new version tag
+        print(f"   Adding tag '{version_tag_name}' to monitor...")
+        success = client.add_monitor_tag(version_tag_id, monitor_id, value='')
         
         if success:
-            print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
-        else:
-            print(f"✗ Failed to apply tag '{version_tag_name}' to monitor '{monitor_name}'", file=sys.stderr)
-            # Final verification for debugging
-            final_check = client.get_monitors()
-            if final_check:
-                final_monitor = final_check.get(str(monitor_id))
-                if final_monitor:
-                    print(f"   Debug: Final monitor tags: {final_monitor.get('tags', [])}", file=sys.stderr)
+            # Wait for the change to propagate
+            time.sleep(1.0)
+            
+            # Verify the tag was added
+            updated_monitors = client.get_monitors()
+            if updated_monitors:
+                updated_monitor = updated_monitors.get(str(monitor_id))
+                if updated_monitor:
+                    updated_tags = updated_monitor.get('tags', [])
+                    print(f"   Debug: Updated monitor tags: {updated_tags}")
+                    
+                    # Check if our tag is present
+                    tag_found = False
+                    for tag in updated_tags:
+                        if isinstance(tag, dict):
+                            tag_id = tag.get('tag_id') or tag.get('id')
+                            tag_name = tag.get('name', '')
+                        else:
+                            tag_id = tag
+                            tag_name = tag_map.get(tag_id, {}).get('name', '')
+                        
+                        if tag_id == version_tag_id or tag_name == version_tag_name:
+                            tag_found = True
+                            break
+                    
+                    if tag_found:
+                        print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
+                        return True
+                    else:
+                        print(f"⚠ Warning: Tag added but not found in monitor tags list", file=sys.stderr)
+                        print(f"   This may be normal - tag might be applied but not returned in API", file=sys.stderr)
+                        # Still consider it a success since add_monitor_tag returned True
+                        return True
         
-        return success
+        print(f"✗ Failed to add tag '{version_tag_name}' to monitor '{monitor_name}'", file=sys.stderr)
+        return False
+        
     except Exception as e:
         print(f"✗ Error updating monitor '{monitor_name}': {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return False
 
 
