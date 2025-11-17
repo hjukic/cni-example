@@ -76,6 +76,8 @@ class UptimeKumaClient:
             self.connected = False
             self.authenticated = False
             print("⚠ Disconnected from Uptime Kuma Socket.io")
+            # Put disconnect event in queue so login can detect it
+            self.response_queue.put({'disconnected': True})
         
         @self.sio.on('connect_error')
         def on_connect_error(data):
@@ -163,21 +165,47 @@ class UptimeKumaClient:
             # Register handler for 'res' event
             self.sio.on('res', login_res_handler)
             
+            # Verify we have credentials
+            if not password:
+                print("✗ Error: Password is empty", file=sys.stderr)
+                return False
+            
             # Send login event
             print(f"Attempting to authenticate as user: {username if username else '(empty)'}")
+            print(f"DEBUG: Password length: {len(password)} characters")
             print("DEBUG: Sending login event...")
-            self.sio.emit('login', {
-                'username': username,
-                'password': password
-            })
+            try:
+                # According to API docs, login event format is: {username, password, token?}
+                login_data = {
+                    'username': username,
+                    'password': password
+                }
+                self.sio.emit('login', login_data)
+                print("DEBUG: Login event sent, waiting for response...")
+            except Exception as e:
+                print(f"✗ Error sending login event: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc()
+                return False
             
             # Wait for response with longer timeout
             timeout = 10
             start_time = time.time()
+            disconnected = False
             while (time.time() - start_time) < timeout:
                 if login_response_received:
                     break
+                # Check if we got disconnected
+                if not self.connected:
+                    disconnected = True
+                    print("⚠ Connection lost during authentication", file=sys.stderr)
+                    break
                 time.sleep(0.1)
+            
+            if disconnected:
+                print("✗ Connection disconnected during authentication", file=sys.stderr)
+                print("   This usually means the server rejected the login attempt", file=sys.stderr)
+                return False
             
             # Remove the callback
             try:
