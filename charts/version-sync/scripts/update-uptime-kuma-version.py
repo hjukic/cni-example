@@ -13,6 +13,7 @@ import os
 import sys
 import requests
 import json
+import base64
 from typing import Optional, List, Dict
 
 # Configuration from environment variables
@@ -39,14 +40,16 @@ def get_version(version_endpoint: str) -> Optional[str]:
 def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
     """Get monitor ID by name."""
     try:
-        # Uptime Kuma API uses token as query parameter, not Bearer token
+        # Uptime Kuma API uses Basic Auth with API key as password
+        # Format: Basic base64(username:api_key) where username can be empty
+        auth_string = base64.b64encode(f':{api_token}'.encode()).decode()
         headers = {
+            'Authorization': f'Basic {auth_string}',
             'Content-Type': 'application/json'
         }
         response = requests.get(
             f'{UPTIME_KUMA_URL}/api/monitors',
             headers=headers,
-            params={'token': api_token},
             timeout=10,
             verify=VERIFY_SSL
         )
@@ -99,7 +102,10 @@ def get_monitor_id(api_token: str, monitor_name: str) -> Optional[int]:
 def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
     """Get or create a tag and return its ID."""
     try:
+        # Uptime Kuma API uses Basic Auth with API key as password
+        auth_string = base64.b64encode(f':{api_token}'.encode()).decode()
         headers = {
+            'Authorization': f'Basic {auth_string}',
             'Content-Type': 'application/json'
         }
         
@@ -107,7 +113,6 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
         response = requests.get(
             f'{UPTIME_KUMA_URL}/api/tags',
             headers=headers,
-            params={'token': api_token},
             timeout=10,
             verify=VERIFY_SSL
         )
@@ -137,7 +142,6 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
         create_response = requests.post(
             f'{UPTIME_KUMA_URL}/api/tags',
             headers=headers,
-            params={'token': api_token},
             json={'name': tag_name, 'color': '#3b82f6'},  # Blue color
             timeout=10,
             verify=VERIFY_SSL
@@ -156,7 +160,10 @@ def get_or_create_tag(api_token: str, tag_name: str) -> Optional[int]:
 def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version'):
     """Update monitor with version tag."""
     try:
+        # Uptime Kuma API uses Basic Auth with API key as password
+        auth_string = base64.b64encode(f':{api_token}'.encode()).decode()
         headers = {
+            'Authorization': f'Basic {auth_string}',
             'Content-Type': 'application/json'
         }
         
@@ -164,7 +171,6 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
         response = requests.get(
             f'{UPTIME_KUMA_URL}/api/monitor/{monitor_id}',
             headers=headers,
-            params={'token': api_token},
             timeout=10,
             verify=VERIFY_SSL
         )
@@ -186,7 +192,6 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
             all_tags_response = requests.get(
                 f'{UPTIME_KUMA_URL}/api/tags',
                 headers=headers,
-                params={'token': api_token},
                 timeout=10,
                 verify=VERIFY_SSL
             )
@@ -212,7 +217,6 @@ def update_monitor_tags(api_token: str, monitor_id: int, monitor_name: str, vers
         update_response = requests.put(
             f'{UPTIME_KUMA_URL}/api/monitor/{monitor_id}',
             headers=headers,
-            params={'token': api_token},
             json=update_data,
             timeout=10,
             verify=VERIFY_SSL
