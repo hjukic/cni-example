@@ -82,10 +82,8 @@ class UptimeKumaClient:
             print(f"✗ Connection error: {data}", file=sys.stderr)
             self.response_queue.put({'error': str(data)})
         
-        # Generic response handler
-        @self.sio.on('res')
-        def on_res(data):
-            self.response_queue.put(data)
+        # Generic response handler - will be used for callbacks
+        # Note: We'll use specific callbacks for each operation instead of queue
         
         # Data event handlers (monitorList, tagList, etc.)
         @self.sio.on('monitorList')
@@ -126,37 +124,87 @@ class UptimeKumaClient:
             return False
         
         try:
+            # Wait a bit for connection to stabilize
+            time.sleep(0.5)
+            
             # Clear any previous responses
             while not self.response_queue.empty():
-                self.response_queue.get()
+                try:
+                    self.response_queue.get_nowait()
+                except:
+                    break
+            
+            # Set up a flag to track if we got a response
+            login_response_received = False
+            login_success = False
+            login_error = None
+            
+            def login_callback(response):
+                nonlocal login_response_received, login_success, login_error
+                login_response_received = True
+                if response.get('ok'):
+                    login_success = True
+                else:
+                    login_error = response.get('msg', 'Authentication failed')
+            
+            # Register callback for 'res' event specifically for login
+            # Use a unique event name to avoid conflicts
+            login_event_id = f'login_res_{int(time.time() * 1000)}'
+            
+            def login_res_handler(response):
+                nonlocal login_response_received, login_success, login_error
+                print(f"DEBUG: Received login response: {response}")
+                login_response_received = True
+                if response.get('ok'):
+                    login_success = True
+                else:
+                    login_error = response.get('msg', 'Authentication failed')
+            
+            # Register handler for 'res' event
+            self.sio.on('res', login_res_handler)
             
             # Send login event
+            print(f"Attempting to authenticate as user: {username if username else '(empty)'}")
+            print("DEBUG: Sending login event...")
             self.sio.emit('login', {
                 'username': username,
                 'password': password
             })
             
-            # Wait for response
-            timeout = 5
+            # Wait for response with longer timeout
+            timeout = 10
             start_time = time.time()
             while (time.time() - start_time) < timeout:
-                try:
-                    response = self.response_queue.get(timeout=0.5)
-                    if response.get('ok'):
-                        self.authenticated = True
-                        print("✓ Authenticated successfully")
-                        return True
-                    else:
-                        error_msg = response.get('msg', 'Authentication failed')
-                        print(f"✗ Authentication failed: {error_msg}", file=sys.stderr)
-                        return False
-                except:
-                    continue
+                if login_response_received:
+                    break
+                time.sleep(0.1)
             
-            print("✗ Authentication timeout", file=sys.stderr)
-            return False
+            # Remove the callback
+            try:
+                self.sio.off('res', login_res_handler)
+            except:
+                pass  # Ignore if handler wasn't registered
+            
+            if not login_response_received:
+                print("✗ Authentication timeout - no response received", file=sys.stderr)
+                print("   This might indicate:", file=sys.stderr)
+                print("   - Incorrect username/password", file=sys.stderr)
+                print("   - Network connectivity issues", file=sys.stderr)
+                print("   - Uptime Kuma server not responding", file=sys.stderr)
+                return False
+            
+            if login_success:
+                self.authenticated = True
+                print("✓ Authenticated successfully")
+                return True
+            else:
+                error_msg = login_error or 'Authentication failed'
+                print(f"✗ Authentication failed: {error_msg}", file=sys.stderr)
+                return False
         except Exception as e:
             print(f"✗ Error during authentication: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
             return False
     
     def get_monitors(self) -> Optional[Dict[str, Any]]:
