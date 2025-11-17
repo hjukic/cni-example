@@ -25,7 +25,6 @@ from uptime_kuma_api import UptimeKumaApi
 UPTIME_KUMA_URL = os.getenv('UPTIME_KUMA_URL', 'http://uptime-kuma.uptime-kuma.svc.cluster.local:3001')
 UPTIME_KUMA_USERNAME = os.getenv('UPTIME_KUMA_USERNAME', '')
 UPTIME_KUMA_PASSWORD = os.getenv('UPTIME_KUMA_PASSWORD', '')
-UPTIME_KUMA_API_TOKEN = os.getenv('UPTIME_KUMA_API_TOKEN', '')
 VERIFY_SSL = os.getenv('VERIFY_SSL', 'false').lower() == 'true'
 
 # Services configuration (JSON format)
@@ -178,9 +177,8 @@ def parse_services_config() -> List[Dict[str, str]]:
 def main():
     """Main execution."""
     # Validate credentials
-    password = UPTIME_KUMA_API_TOKEN or UPTIME_KUMA_PASSWORD
-    if not password:
-        print("✗ Error: Either UPTIME_KUMA_API_TOKEN or UPTIME_KUMA_PASSWORD must be set", file=sys.stderr)
+    if not UPTIME_KUMA_PASSWORD:
+        print("✗ Error: UPTIME_KUMA_PASSWORD must be set", file=sys.stderr)
         sys.exit(1)
     
     # Parse service configurations
@@ -192,7 +190,7 @@ def main():
     print(f"   Uptime Kuma URL: {UPTIME_KUMA_URL}\n")
     
     # Connect to Uptime Kuma
-    api = connect_to_uptime_kuma(UPTIME_KUMA_URL, UPTIME_KUMA_USERNAME, password)
+    api = connect_to_uptime_kuma(UPTIME_KUMA_URL, UPTIME_KUMA_USERNAME, UPTIME_KUMA_PASSWORD)
     if not api:
         sys.exit(1)
     
