@@ -7,10 +7,16 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: {{ .Values.global.repoURL }}
-    path: charts/kuma-versionizer
-    targetRevision: {{ .Values.global.targetRevision }}
+  sources:
+    - repoURL: https://github.com/hjukic/kuma-versionizer
+      path: chart
+      targetRevision: main
+      helm:
+        valueFiles:
+          - $values/charts/kuma-versionizer/values.yaml
+    - repoURL: {{ .Values.global.repoURL }}
+      targetRevision: {{ .Values.global.targetRevision }}
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: kuma-versionizer
