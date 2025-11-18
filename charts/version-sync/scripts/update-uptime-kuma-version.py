@@ -31,10 +31,10 @@ VERIFY_SSL = os.getenv('VERIFY_SSL', 'false').lower() == 'true'
 SERVICES_CONFIG = os.getenv('SERVICES_CONFIG', '')
 
 
-def get_version(version_endpoint: str) -> Optional[str]:
-    """Fetch version from the version endpoint."""
+def get_version(version_endpoint: str, session: requests.Session) -> Optional[str]:
+    """Fetch version from the version endpoint using a shared session."""
     try:
-        response = requests.get(version_endpoint, timeout=10, verify=VERIFY_SSL)
+        response = session.get(version_endpoint, timeout=10, verify=VERIFY_SSL)
         response.raise_for_status()
         version = response.text.strip()
         return version
@@ -57,24 +57,37 @@ def connect_to_uptime_kuma(url: str, username: str, password: str) -> Optional[U
         return None
 
 
-def get_or_create_tag(api: UptimeKumaApi, tag_name: str, tag_color: str = '#3b82f6') -> Optional[Dict[str, Any]]:
-    """Get existing tag or create a new one."""
-    try:
-        # Check if tag exists
-        for tag in api.get_tags():
-            if tag['name'] == tag_name:
-                print(f"✓ Found existing tag '{tag_name}' (ID: {tag['id']})")
-                return tag
-        
-        # Create new tag
-        print(f"Creating new tag '{tag_name}'...")
-        new_tag = api.add_tag(name=tag_name, color=tag_color)
-        print(f"✓ Created tag '{tag_name}' (ID: {new_tag['id']})")
-        return new_tag
-    except Exception as e:
-        print(f"✗ Error managing tags: {e}", file=sys.stderr)
-        traceback.print_exc()
-        return None
+class TagCache:
+    """Cache tag lookups to avoid repeated API calls."""
+
+    def __init__(self, api: UptimeKumaApi):
+        self.api = api
+        tags = api.get_tags()
+        self._tags_by_name: Dict[str, Dict[str, Any]] = {tag['name']: tag for tag in tags}
+        self._tag_names_by_id: Dict[int, str] = {tag['id']: tag['name'] for tag in tags}
+
+    def get_or_create(self, tag_name: str, tag_color: str = '#3b82f6') -> Optional[Dict[str, Any]]:
+        if tag_name in self._tags_by_name:
+            tag = self._tags_by_name[tag_name]
+            print(f"✓ Found existing tag '{tag_name}' (ID: {tag['id']})")
+            return tag
+
+        try:
+            print(f"Creating new tag '{tag_name}'...")
+            new_tag = self.api.add_tag(name=tag_name, color=tag_color)
+            print(f"✓ Created tag '{tag_name}' (ID: {new_tag['id']})")
+            self._tags_by_name[tag_name] = new_tag
+            self._tag_names_by_id[new_tag['id']] = tag_name
+            return new_tag
+        except Exception as e:
+            print(f"✗ Error managing tags: {e}", file=sys.stderr)
+            traceback.print_exc()
+            return None
+
+    def get_name(self, tag_id: Optional[int]) -> str:
+        if tag_id is None:
+            return ''
+        return self._tag_names_by_id.get(tag_id, '')
 
 
 def _extract_tag_id(tag: Any) -> Optional[int]:
@@ -84,13 +97,18 @@ def _extract_tag_id(tag: Any) -> Optional[int]:
     return tag
 
 
-def update_monitor_tags(api: UptimeKumaApi, monitor_id: int, monitor_name: str, version: str, tag_prefix: str = 'version') -> bool:
+def update_monitor_tags(
+    api: UptimeKumaApi,
+    monitor: Dict[str, Any],
+    monitor_name: str,
+    version: str,
+    tag_cache: TagCache,
+    tag_prefix: str = 'version',
+) -> bool:
     """Update monitor with version tag."""
     try:
-        # Get monitor and create/find version tag
-        monitor = api.get_monitor(monitor_id)
         version_tag_name = f'{tag_prefix}-{version}'
-        version_tag = get_or_create_tag(api, version_tag_name)
+        version_tag = tag_cache.get_or_create(version_tag_name)
         
         if not version_tag:
             return False
@@ -98,26 +116,33 @@ def update_monitor_tags(api: UptimeKumaApi, monitor_id: int, monitor_name: str, 
         version_tag_id = version_tag['id']
         print(f"   Using tag ID: {version_tag_id}")
         
-        # Build tag map for name lookups
-        tag_map = {tag['id']: tag['name'] for tag in api.get_tags()}
-        
         # Find and remove old version tags
         current_tags = monitor.get('tags', [])
+        updated_tags = []
+
         for tag in current_tags:
             tag_id = _extract_tag_id(tag)
-            tag_name = tag.get('name') if isinstance(tag, dict) else tag_map.get(tag_id, '')
+            tag_name = tag.get('name') if isinstance(tag, dict) else tag_cache.get_name(tag_id)
             
             # Remove old version tags (but not the one we're adding)
             if tag_name.startswith(f'{tag_prefix}-') and tag_id != version_tag_id:
                 print(f"   Removing old tag '{tag_name}'...")
                 try:
-                    api.delete_monitor_tag(tag_id=tag_id, monitor_id=monitor_id)
+                    api.delete_monitor_tag(tag_id=tag_id, monitor_id=monitor['id'])
                 except Exception as e:
                     print(f"   ⚠ Warning: Could not remove old tag: {e}")
-        
+                continue
+
+            updated_tags.append(tag)
+
         # Add the new version tag
         print(f"   Adding tag '{version_tag_name}'...")
-        api.add_monitor_tag(tag_id=version_tag_id, monitor_id=monitor_id, value='')
+        api.add_monitor_tag(tag_id=version_tag_id, monitor_id=monitor['id'], value='')
+
+        # Track the new state locally so repeated runs avoid stale data
+        updated_tags.append({'id': version_tag_id, 'name': version_tag_name})
+        monitor['tags'] = updated_tags
+
         print(f"✓ Successfully updated monitor '{monitor_name}' with tag '{version_tag_name}'")
         return True
         
@@ -127,7 +152,13 @@ def update_monitor_tags(api: UptimeKumaApi, monitor_id: int, monitor_name: str, 
         return False
 
 
-def process_service(api: UptimeKumaApi, service_config: Dict[str, str]) -> bool:
+def process_service(
+    api: UptimeKumaApi,
+    session: requests.Session,
+    monitor_map: Dict[str, Dict[str, Any]],
+    tag_cache: TagCache,
+    service_config: Dict[str, str],
+) -> bool:
     """Process a single service configuration."""
     monitor_name = service_config.get('monitorName', '')
     version_endpoint = service_config.get('versionEndpoint', '')
@@ -140,19 +171,26 @@ def process_service(api: UptimeKumaApi, service_config: Dict[str, str]) -> bool:
     print(f"\n📦 Processing service: {monitor_name}")
     
     # Fetch version from endpoint
-    version = get_version(version_endpoint)
+    version = get_version(version_endpoint, session)
     if not version:
         return False
     print(f"   ✓ Fetched version: {version}")
     
     # Find monitor by name
-    monitor = next((m for m in api.get_monitors() if m['name'] == monitor_name), None)
+    monitor = monitor_map.get(monitor_name)
     if not monitor:
         print(f"   ✗ Monitor '{monitor_name}' not found", file=sys.stderr)
         return False
     
     # Update monitor with version tag
-    return update_monitor_tags(api, monitor['id'], monitor_name, version, tag_prefix)
+    return update_monitor_tags(api, monitor, monitor_name, version, tag_cache, tag_prefix)
+
+
+def build_monitor_map(api: UptimeKumaApi) -> Dict[str, Dict[str, Any]]:
+    """Return a dictionary of monitors keyed by name."""
+    monitors = api.get_monitors()
+    print(f"✓ Loaded {len(monitors)} monitor(s) from Uptime Kuma")
+    return {monitor['name']: monitor for monitor in monitors}
 
 
 def parse_services_config() -> List[Dict[str, str]]:
@@ -194,9 +232,15 @@ def main():
     if not api:
         sys.exit(1)
     
+    session = requests.Session()
     try:
+        monitor_map = build_monitor_map(api)
+        tag_cache = TagCache(api)
         # Process each service
-        results = [process_service(api, service) for service in services]
+        results = [
+            process_service(api, session, monitor_map, tag_cache, service)
+            for service in services
+        ]
         
         # Print summary
         successful = sum(results)
@@ -211,6 +255,7 @@ def main():
         print("\n✓ All version tags updated successfully")
         
     finally:
+        session.close()
         try:
             api.disconnect()
             print("Disconnected from Uptime Kuma")
