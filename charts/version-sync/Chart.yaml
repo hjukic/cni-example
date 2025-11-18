@@ -1,6 +1,0 @@
-apiVersion: v2
-name: version-sync
-description: CronJob to sync application version to Uptime Kuma tags
-type: application
-version: 1.0.0
-

@@ -1,0 +1,31 @@
+# Values file for deploying kuma-versionizer (see https://github.com/hjukic/kuma-versionizer)
+
+schedule: "*/5 * * * *"
+
+image:
+  repository: ghcr.io/hjukic/kuma-versionizer
+  tag: "main"
+
+uptimeKuma:
+  url: "http://uptime-kuma.uptime-kuma.svc.cluster.local:3001"
+  usernameSecret:
+    name: "uptime-kuma-credentials"
+    key: "username"
+  passwordSecret:
+    name: "uptime-kuma-credentials"
+    key: "password"
+
+services:
+  - monitorName: "webapp-color"
+    versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
+    tagPrefix: "version"
+
+verifySSL: "false"
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi

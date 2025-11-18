@@ -13,13 +13,22 @@ Automatic version tagging for Uptime Kuma monitors.
 
 A CronJob automatically syncs versions from `/static/version.txt` to Uptime Kuma tags (e.g., `version-1.0.0`).
 
-### Use the prebuilt kuma-versionizer image
+### Use the kuma-versionizer Helm chart
 
-The CronJob now uses the public [`kuma-versionizer`](https://github.com/hjukic/kuma-versionizer) project and its container image published to GHCR.
+Deployment now relies on the upstream [`kuma-versionizer`](https://github.com/hjukic/kuma-versionizer) chart/image. This repo only keeps the environment-specific values in `charts/kuma-versionizer/values.yaml`.
 
-1. Pick the tag you want to run (e.g., `main` or a release like `v1.0.0`).  
-2. Update `charts/version-sync/values.yaml` if you want to pin a different tag or override it at install time with `--set image.tag=<tag>`.  
-3. If you still prefer a private registry, clone the `kuma-versionizer` repo, rebuild the image from there, and replace `image.repository`/`image.tag` with your coordinates.
+1. Clone the chart repo (once):  
+   `git clone https://github.com/hjukic/kuma-versionizer.git ~/Repos/kuma-versionizer`
+2. Optionally pick a specific chart/image tag (defaults to `main`). Update `charts/kuma-versionizer/values.yaml` if you need to override `image.repository` or `image.tag`.
+3. Deploy using the upstream chart and local values:
+
+```bash
+helm upgrade --install kuma-versionizer ~/Repos/kuma-versionizer/chart \
+  --namespace kuma-versionizer --create-namespace \
+  -f charts/kuma-versionizer/values.yaml
+```
+
+If you need additional tuning (node selectors, tolerations, extra env, etc.), make those changes in the upstream chart or pass them via extra `--set` flags when running Helm.
 
 ### Quick Setup
 
@@ -29,13 +38,12 @@ The CronJob now uses the public [`kuma-versionizer`](https://github.com/hjukic/k
 kubectl create secret generic uptime-kuma-credentials \
   --from-literal=username='YOUR_UPTIME_KUMA_USERNAME' \
   --from-literal=password='YOUR_UPTIME_KUMA_PASSWORD' \
-  -n version-sync
+  -n kuma-versionizer
 ```
 
-**2. Configure `charts/version-sync/values.yaml`:**
+**2. Configure `charts/kuma-versionizer/values.yaml`:**
 
 ```yaml
-namespace: version-sync
 schedule: "*/5 * * * *"
 
 uptimeKuma:
@@ -52,17 +60,12 @@ services:
     versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
 ```
 
-**3. Deploy:**
-
-```bash
-kubectl create namespace version-sync
-helm install version-sync charts/version-sync -n version-sync
-```
+**3. Deploy:** use the Helm command from the section above to install the upstream chart with this values file.
 
 **4. Verify:**
 
 ```bash
-kubectl logs -n version-sync -l app=version-sync --tail=20
+kubectl logs -n kuma-versionizer -l app=kuma-versionizer --tail=20
 ```
 
 Expected: `✓ Successfully updated monitor 'webapp-color' with tag 'version-1.0.0'`
@@ -84,7 +87,7 @@ services:
 
 - **Auth fails**: Check credentials in secret
 - **Monitor not found**: Monitor name must match exactly
-- **View logs**: `kubectl logs -n version-sync -l app=version-sync`
+- **View logs**: `kubectl logs -n kuma-versionizer -l app=kuma-versionizer`
 
 ## How It Works
 

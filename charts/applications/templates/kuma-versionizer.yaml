@@ -2,18 +2,18 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   namespace: argocd
-  name: version-sync
+  name: kuma-versionizer
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
     repoURL: {{ .Values.global.repoURL }}
-    path: charts/version-sync
+    path: charts/kuma-versionizer
     targetRevision: {{ .Values.global.targetRevision }}
   destination:
     server: https://kubernetes.default.svc
-    namespace: version-sync
+    namespace: kuma-versionizer
   # syncPolicy:
   #   automated:
   #     selfHeal: true
