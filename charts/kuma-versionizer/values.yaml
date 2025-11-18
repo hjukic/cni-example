@@ -18,7 +18,7 @@ uptimeKuma:
 services:
   - monitorName: "webapp-color"
     versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
-    tagPrefix: "version"
+    # tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
 
 verifySSL: "false"
 
