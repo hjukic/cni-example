@@ -1,0 +1,9 @@
+apiVersion: v2
+name: kuma-versionizer
+description: Kuma versionizer for automatic version tagging in Uptime Kuma
+version: 1.0.0
+
+dependencies:
+  - name: kuma-versionizer
+    version: "*"
+    repository: https://github.com/hjukic/kuma-versionizer.git//chart
