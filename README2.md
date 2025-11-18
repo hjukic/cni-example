@@ -13,6 +13,14 @@ Automatic version tagging for Uptime Kuma monitors.
 
 A CronJob automatically syncs versions from `/static/version.txt` to Uptime Kuma tags (e.g., `version-1.0.0`).
 
+### Use the prebuilt kuma-versionizer image
+
+The CronJob now uses the public [`kuma-versionizer`](https://github.com/hjukic/kuma-versionizer) project and its container image published to GHCR.
+
+1. Pick the tag you want to run (e.g., `main` or a release like `v1.0.0`).  
+2. Update `charts/version-sync/values.yaml` if you want to pin a different tag or override it at install time with `--set image.tag=<tag>`.  
+3. If you still prefer a private registry, clone the `kuma-versionizer` repo, rebuild the image from there, and replace `image.repository`/`image.tag` with your coordinates.
+
 ### Quick Setup
 
 **1. Create secret with credentials:**

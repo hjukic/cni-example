@@ -5,11 +5,10 @@ namespace: version-sync
 # CronJob schedule (cron format)
 schedule: "*/5 * * * *"  # Every 5 minutes
 
-# Container image configuration
-# Use a standard Python image - no need to build/push custom images!
+# Container image configuration (prebuilt at https://github.com/hjukic/kuma-versionizer)
 image:
-  repository: python
-  tag: "3.11-slim"
+  repository: ghcr.io/hjukic/kuma-versionizer
+  tag: "main"
   pullPolicy: IfNotPresent
 
 # Uptime Kuma configuration
