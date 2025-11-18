@@ -11,6 +11,8 @@ spec:
       app: webapp-color
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-version.yaml") . | sha256sum }}
       labels:
         app: webapp-color
     spec:
@@ -34,4 +36,4 @@ spec:
       volumes:
         - name: version-config
           configMap:
-            name: webapp-color-version-{{ .Chart.Version | replace "." "-" }}
+            name: webapp-color-version
