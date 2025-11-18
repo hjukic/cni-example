@@ -1,9 +1,4 @@
 apiVersion: v2
 name: kuma-versionizer
-description: Kuma versionizer for automatic version tagging in Uptime Kuma
+description: Kuma Versionizer service version sync cronjob
 version: 1.0.0
-
-dependencies:
-  - name: kuma-versionizer
-    version: "*"
-    repository: https://github.com/hjukic/kuma-versionizer.git//chart
