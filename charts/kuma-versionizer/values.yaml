@@ -19,9 +19,11 @@ services:
   - monitorName: "webapp-color"
     versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
     # tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
-  - monitorName: "Zensical"
-    versionEndpoint: "https://github.com/zensical/zensical/tags"
-    # tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
+  - monitorName: "Grafana AGMV"
+    versionEndpoint: "https://grafana.tools.soka-bau-annahmestelle.de/api/health"
+  # - monitorName: "Grafana AGMV"
+  #   versionEndpoint: "https://grafana.tools.soka-bau-annahmestelle.de/api/health"
+
 verifySSL: "false"
 
 resources:
