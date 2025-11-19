@@ -19,7 +19,9 @@ services:
   - monitorName: "webapp-color"
     versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
     # tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
-
+  - monitorName: "Jenkins"
+    versionEndpoint: "https://www.jenkins.io/changelog-stable/"
+    # tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
 verifySSL: "false"
 
 resources:
