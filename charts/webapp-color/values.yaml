@@ -16,7 +16,7 @@ containerPort: 8080
 
 # Color selector - change this to switch colors instantly!
 # The webapp-color container accepts: red, green, blue, darkblue, pink
-appColor: "blue"
+appColor: "green"
 
 # Service configuration - NodePort with specific port for reliable access
 service:

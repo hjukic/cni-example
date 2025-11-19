@@ -1,4 +1,4 @@
 apiVersion: v2
 name: webapp-color
 description: A simple webapp that displays different colors
-version: 1.0.1
+version: 1.0.2
