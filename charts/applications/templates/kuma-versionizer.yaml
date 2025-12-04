@@ -22,14 +22,13 @@ spec:
     - repoURL: https://github.com/hjukic/kuma-versionizer
       path: chart
       targetRevision: main
+    
+    - repoURL: {{ .Values.global.repoURL }}
+      path: charts/kuma-versionizer
+      targetRevision: {{ .Values.global.targetRevision }}
       helm:
         valueFiles:
           - values.yaml
-          - $values/charts/kuma-versionizer/values.yaml
-    
-    - repoURL: {{ .Values.global.repoURL }}
-      targetRevision: {{ .Values.global.targetRevision }}
-      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: kuma-versionizer
