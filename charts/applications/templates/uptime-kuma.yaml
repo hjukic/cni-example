@@ -11,12 +11,6 @@ spec:
     repoURL: {{ .Values.global.repoURL }}
     path: charts/uptime-kuma
     targetRevision: {{ .Values.global.targetRevision }}
-    helm:
-      repositories:
-        - name: uptime-kuma
-          url: https://dirsigler.github.io/uptime-kuma-helm/
-          type: helm
-          insecure: true
   destination:
     server: https://kubernetes.default.svc
     namespace: uptime-kuma
