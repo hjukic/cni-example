@@ -24,6 +24,7 @@ spec:
       targetRevision: main
       helm:
         valueFiles:
+          - values.yaml
           - $values/charts/kuma-versionizer/values.yaml
     
     - repoURL: {{ .Values.global.repoURL }}
