@@ -8,31 +8,27 @@ metadata:
 spec:
   project: default
   sources:
-    # Option 1: Use OCI registry (once GitHub Actions publishes it)
-    # Uncomment these lines and comment out the Git source below:
-    # - chart: kuma-versionizer
-    #   repoURL: oci://ghcr.io/hjukic
-    #   targetRevision: 1.0.0
-    #   helm:
-    #     valueFiles:
-    #       - $values/charts/kuma-versionizer/values.yaml
-    
-    # Option 2: Use Git repository (current approach)
-    # Comment out these lines once OCI registry is set up:
+    # Source 1: Chart from external repository
     - repoURL: https://github.com/hjukic/kuma-versionizer
       path: chart
       targetRevision: main
-    
-    - repoURL: {{ .Values.global.repoURL }}
-      path: charts/kuma-versionizer
-      targetRevision: {{ .Values.global.targetRevision }}
       helm:
         valueFiles:
-          - values.yaml
+          - $values/charts/kuma-versionizer/values.yaml
+    
+    # Source 2: Values from your local repository
+    - repoURL: {{ .Values.global.repoURL }}
+      targetRevision: {{ .Values.global.targetRevision }}
+      ref: values
+      
   destination:
     server: https://kubernetes.default.svc
     namespace: kuma-versionizer
-  # syncPolicy:
+    
+  # Tell ArgoCD to merge values from source 2 into source 1
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
   #   automated:
   #     selfHeal: true
   #   syncOptions:
