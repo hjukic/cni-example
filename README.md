@@ -32,7 +32,6 @@ helm repo add argo https://argoproj.github.io/argo-helm
 helm install argocd ./sources/argo-cd.tgz --namespace argocd --set server.extraArgs[0]=--insecure
 ```
 
-
 ### 2.1 Install ArgoCD with Helm (Online Alternative)
 ```bash
 # Create namespace and install ArgoCD
@@ -90,13 +89,24 @@ ArgoCD automatically rolls back the change!
 
 ## Uptime Kuma Monitoring
 
-### Setup
+Uptime Kuma is deployed automatically by ArgoCD. Open http://localhost:30001 to access it.
+
+### Kuma Versionizer API Credentials
+
+The `kuma-versionizer` application needs credentials to authenticate with Uptime Kuma's API. Create the secret in the kuma-versionizer namespace:
 
 ```bash
-helm upgrade --install uptime-kuma charts/uptime-kuma --namespace uptime-kuma --create-namespace
+kubectl create secret generic uptime-kuma-credentials \
+  --from-literal=username=admin \
+  --from-literal=password=okradmin123 \
+  --namespace kuma-versionizer
 ```
 
-Open http://localhost:30001 and configure monitors.
+**Credentials:**
+- Username: `admin`
+- Password: `okradmin123`
+
+**Note:** These are the same credentials you'll use to login to Uptime Kuma at http://localhost:30001 on first setup.
 
 ### Backup Configuration
 

@@ -51,7 +51,7 @@ spec:
           volumes:
           - name: data
             persistentVolumeClaim:
-              claimName: uptime-kuma
+              claimName: uptime-kuma-pvc
           - name: backup
             persistentVolumeClaim:
               claimName: uptime-kuma-backup
