@@ -1,22 +1,35 @@
-# Uptime Kuma Helm chart values
-# For all available options, see: https://artifacthub.io/packages/helm/uptime-kuma/uptime-kuma
-
 uptime-kuma:
-  # Storage configuration
   persistence:
     enabled: true
     size: 1Gi
   
-  # Service configuration
   service:
     type: NodePort
     port: 3001
-    nodePort: 30001  # Optional: specify a port between 30000-32767
+    nodePort: 30001
   
-  # Image configuration - override to use newer version
   image:
     repository: louislam/uptime-kuma
-    pullPolicy: IfNotPresent
     tag: "2.0.2"
-
-# For version monitoring instructions, see README2.md
+  
+  initContainers:
+    - name: restore-database
+      image: alpine:3.19
+      command: ["/bin/sh", "/scripts/restore.sh"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: restore-script
+          mountPath: /scripts
+        - name: restore-backup
+          mountPath: /restore
+  
+  extraVolumes:
+    - name: restore-script
+      configMap:
+        name: uptime-kuma-restore-script
+        defaultMode: 0755
+    - name: restore-backup
+      configMap:
+        name: uptime-kuma-db-backup
+        optional: true
