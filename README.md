@@ -105,7 +105,16 @@ git clone <repository-url>
 cd cni-example
 ```
 
-### 2. Install ArgoCD with Helm
+### 2. Install ArgoCD with Helm (Offline Mode)
+```bash
+# Create namespace and install ArgoCD
+kubectl create namespace argocd
+helm repo add argo https://argoproj.github.io/argo-helm
+helm install argocd ./sources/argo-cd.tgz --namespace argocd --set server.extraArgs[0]=--insecure
+```
+
+
+### 2.1 Install ArgoCD with Helm (Online Alternative)
 ```bash
 # Create namespace and install ArgoCD
 kubectl create namespace argocd
