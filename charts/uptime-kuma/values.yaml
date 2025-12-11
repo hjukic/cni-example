@@ -11,25 +11,3 @@ uptime-kuma:
   image:
     repository: louislam/uptime-kuma
     tag: "2.0.2"
-  
-  initContainers:
-    - name: restore-database
-      image: alpine:3.19
-      command: ["/bin/sh", "/scripts/restore.sh"]
-      volumeMounts:
-        - name: data
-          mountPath: /data
-        - name: restore-script
-          mountPath: /scripts
-        - name: restore-backup
-          mountPath: /restore
-  
-  extraVolumes:
-    - name: restore-script
-      configMap:
-        name: uptime-kuma-restore-script
-        defaultMode: 0755
-    - name: restore-backup
-      configMap:
-        name: uptime-kuma-db-backup
-        optional: true

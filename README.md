@@ -108,31 +108,41 @@ kubectl create secret generic uptime-kuma-credentials \
 
 **Note:** These are the same credentials you'll use to login to Uptime Kuma at http://localhost:30001 on first setup.
 
-### Backup Configuration
+### Backup & Restore (Simple Manual Commands)
+
+#### Create a Backup
 
 ```bash
-# Trigger backup
-kubectl create job -n uptime-kuma backup-now --from=cronjob/uptime-kuma-backup
+# Get the pod name
+kubectl get pods -n uptime-kuma
 
-# Save to Git
-kubectl get configmap uptime-kuma-db-backup -n uptime-kuma -o yaml > charts/uptime-kuma/templates/restore-db-backup.yaml
-git add charts/uptime-kuma/templates/restore-db-backup.yaml
-git commit -m "Backup Uptime Kuma config"
-git push
+# Copy the database file from the pod to your local machine
+kubectl cp uptime-kuma/<POD_NAME>:/app/data/kuma.db ./kuma-backup.db -n uptime-kuma
+
+# Example:
+# kubectl cp uptime-kuma/uptime-kuma-6f8b9d7c4d-abc12:/app/data/kuma.db ./kuma-backup.db -n uptime-kuma
 ```
 
-### Test Restore
+Your backup is now saved locally as `kuma-backup.db` ✅
+
+#### Restore from Backup
 
 ```bash
-# Delete everything
-helm uninstall uptime-kuma -n uptime-kuma
-kubectl delete pvc uptime-kuma uptime-kuma-backup -n uptime-kuma
+# Get the pod name
+kubectl get pods -n uptime-kuma
 
-# Redeploy - config auto-restores from Git!
-helm upgrade --install uptime-kuma charts/uptime-kuma --namespace uptime-kuma --create-namespace
+# Copy your backup file to the pod (overwrites current database)
+kubectl cp ./kuma-backup.db uptime-kuma/<POD_NAME>:/app/data/kuma.db -n uptime-kuma
+
+# Restart the pod to load the restored database
+kubectl delete pod -l app.kubernetes.io/name=uptime-kuma -n uptime-kuma
+
+# Example:
+# kubectl cp ./kuma-backup.db uptime-kuma/uptime-kuma-6f8b9d7c4d-abc12:/app/data/kuma.db -n uptime-kuma
+# kubectl delete pod -l app.kubernetes.io/name=uptime-kuma -n uptime-kuma
 ```
 
-Your monitors are back! ✅
+Your monitors are restored! ✅
 
 ---
 

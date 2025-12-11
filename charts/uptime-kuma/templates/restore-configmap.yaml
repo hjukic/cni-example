@@ -1,20 +1,2 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: uptime-kuma-restore-script
-  namespace: uptime-kuma
-data:
-  restore.sh: |
-    #!/bin/sh
-    if [ -f /data/kuma.db ]; then
-      echo "Database exists, skipping restore"
-      exit 0
-    fi
-    
-    if [ -f /restore/kuma.db ]; then
-      echo "Restoring database from backup..."
-      cp /restore/kuma.db /data/kuma.db
-      echo "✓ Restore complete"
-    else
-      echo "No backup found, starting fresh"
-    fi
+# Restore is now manual - see README.md for instructions
+# No automated restore needed for proof of concept
