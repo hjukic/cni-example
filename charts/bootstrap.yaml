@@ -14,13 +14,13 @@ spec:
   project: default
   source:
     repoURL: https://github.com/hjukic/cni-example
-    targetRevision: HEAD
+    targetRevision: service-monitor
     path: charts/applications
     helm:
       values: |
         global:
           repoURL: https://github.com/hjukic/cni-example
-          targetRevision: HEAD
+          targetRevision: service-monitor
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

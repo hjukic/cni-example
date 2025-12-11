@@ -1,4 +1,4 @@
 # Global settings for all ArgoCD Applications
 global:
   repoURL: https://github.com/hjukic/cni-example
-  targetRevision: service-monitor # has to be changed to HEAD when pushing to the remote repository
+  targetRevision: service-monitor
