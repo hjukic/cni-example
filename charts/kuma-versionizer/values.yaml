@@ -23,7 +23,9 @@ services:
     versionEndpoint: "https://sonarqube-test.soka-bau.de/api/server/version"
   - monitorName: "SonarQube Prod"
     versionEndpoint: "https://sonarqube.soka-bau.de/api/server/version"
-  
+  - monitorName: "Jenkins Prod"
+    versionEndpoint: "https://jenkins-channel.soka-bau.de"
+    versionHeader: "X-Jenkins"
 verifySSL: "false"
 
 resources:
