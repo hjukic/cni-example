@@ -26,8 +26,8 @@ services:
   - monitorName: "Jenkins Prod"
     versionEndpoint: "https://jenkins-channel.soka-bau.de"
     versionHeader: "X-Jenkins"
-  - monitorName: "Digitaler Posteingang"
-    versionEndpoint: "https://test.webapps.soka-bau.de/gat-digipost-rest-inh/version"
+  - monitorName: "GAT Medlungprozessor"
+    versionEndpoint: "https://test.webapps.soka-bau.de/gat-meldungsprozessor-rest-inh/version/dbJpaLibVersion"
 
 verifySSL: "false"
 
