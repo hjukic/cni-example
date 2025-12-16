@@ -22,7 +22,7 @@ services:
   - monitorName: "SonarQube Test"
     versionEndpoint: "https://sonarqube-test.soka-bau.de/api/server/version"
   - monitorName: "SonarQube Prod"
-    versionEndpoint: "https://sonarqube-prod.soka-bau.de/api/server/version"
+    versionEndpoint: "https://sonarqube.soka-bau.de/api/server/version"
   
 verifySSL: "false"
 
