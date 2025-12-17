@@ -16,9 +16,9 @@ uptimeKuma:
     key: "password"
 
 services:
-  - monitorName: "webapp-color"
-    versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
-    # tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
+  # - monitorName: "webapp-color"
+  #   versionEndpoint: "http://webapp-color.webapp-color.svc.cluster.local/static/version.txt"
+    ######  tagPrefix: "Version" # Uptime Kuma tag prefix. Version is the default prefix
   - monitorName: "SonarQube Test"
     versionEndpoint: "https://sonarqube-test.soka-bau.de/api/server/version"
   - monitorName: "SonarQube Prod"
